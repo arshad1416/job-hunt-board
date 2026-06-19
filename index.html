@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Job Hunt Dashboard — Arshad Kazi</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <nav class="topbar">
+    <div class="topbar-inner">
+      <h1 class="logo">📋 Job Hunt Tracker</h1>
+      <div class="topbar-meta">
+        <span class="badge" id="job-count-badge">0 jobs</span>
+        <span class="last-updated" id="last-updated">—</span>
+      </div>
+    </div>
+  </nav>
+
+  <main class="container">
+    <!-- Filters -->
+    <section class="filters">
+      <div class="filter-row">
+        <div class="filter-group">
+          <label>Track</label>
+          <select id="filter-track">
+            <option value="all">All Tracks</option>
+            <option value="ev_commercial">🚗 EV Commercial</option>
+            <option value="ai_engineering">🤖 AI / Engineering</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label>Min Score</label>
+          <select id="filter-min-score">
+            <option value="0">Any</option>
+            <option value="70">70+</option>
+            <option value="80">80+</option>
+            <option value="90">90+</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label>Status</label>
+          <select id="filter-status">
+            <option value="all">All</option>
+            <option value="found">New</option>
+            <option value="applied">Applied</option>
+            <option value="materials_ready">Materials Ready</option>
+            <option value="saved">Saved</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label>Search</label>
+          <input type="text" id="filter-search" placeholder="Title / Company / Keyword...">
+        </div>
+        <div class="filter-actions">
+          <button id="btn-refresh" class="btn btn-outline" title="Refresh data">↻</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Stats bar -->
+    <section class="stats-bar" id="stats-bar">
+      <div class="stat"><span class="stat-value" id="stat-total">0</span> Total</div>
+      <div class="stat"><span class="stat-value" id="stat-new">0</span> New</div>
+      <div class="stat"><span class="stat-value" id="stat-ev">0</span> EV Commercial</div>
+      <div class="stat"><span class="stat-value" id="stat-ai">0</span> AI / Engineering</div>
+      <div class="stat"><span class="stat-value" id="stat-applied">0</span> Applied</div>
+    </section>
+
+    <!-- Table -->
+    <section class="table-wrapper">
+      <table id="jobs-table">
+        <thead>
+          <tr>
+            <th class="col-rank">#</th>
+            <th class="col-score">Score</th>
+            <th class="col-title">Job Title</th>
+            <th class="col-company">Company</th>
+            <th class="col-salary">Salary</th>
+            <th class="col-desc">Summary</th>
+            <th class="col-posted">Posted</th>
+            <th class="col-location">Location</th>
+            <th class="col-actions">Actions</th>
+            <th class="col-applied">✓</th>
+          </tr>
+        </thead>
+        <tbody id="jobs-tbody">
+          <tr><td colspan="10" class="loading-msg">Loading jobs...</td></tr>
+        </tbody>
+      </table>
+    </section>
+  </main>
+
+  <!-- Toast notification -->
+  <div id="toast" class="toast hidden"></div>
+
+  <!-- Generate modal -->
+  <div id="generate-modal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Generating Materials</h2>
+        <button class="modal-close" id="modal-close">&times;</button>
+      </div>
+      <div class="modal-body" id="modal-body">
+        <div class="spinner"></div>
+        <p id="modal-status">Generating resume &amp; cover letter via GLM-5.2...</p>
+      </div>
+      <div class="modal-footer" id="modal-footer">
+        <button class="btn btn-outline" id="modal-close-btn">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
