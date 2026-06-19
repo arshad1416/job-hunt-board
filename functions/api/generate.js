@@ -172,10 +172,11 @@ export async function onRequestPost(context) {
         `materials/${jobId}/resume.md`
       );
       if (existing) {
-        // Materials already generated — return URLs without regenerating
+        // Materials already generated — return URLs without regenerating.
+        // Don't downgrade an existing 'applied' status (C3).
         await tursoExecute(
           env,
-          "UPDATE applications SET status='materials_ready', updated_at=datetime('now') WHERE id=?",
+          "UPDATE applications SET status='materials_ready', updated_at=datetime('now') WHERE id=? AND status!='applied'",
           [jobId]
         );
         return json({
@@ -237,10 +238,11 @@ export async function onRequestPost(context) {
   }
 
   // ── 6. Update Turso status ──
+  // Only advance to 'materials_ready' if not already 'applied' (C3 — no downgrade).
   try {
     await tursoExecute(
       env,
-      "UPDATE applications SET status='materials_ready', updated_at=datetime('now') WHERE id=?",
+      "UPDATE applications SET status='materials_ready', updated_at=datetime('now') WHERE id=? AND status!='applied'",
       [jobId]
     );
   } catch (err) {

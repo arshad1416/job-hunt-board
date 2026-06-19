@@ -62,6 +62,14 @@
   }
 
   /**
+   * Validate that a URL uses a safe http(s) protocol before rendering it as
+   * a link. Prevents javascript:/data: URLs from being injected into href (W6).
+   */
+  function isSafeUrl(url) {
+    return typeof url === 'string' && /^https?:\/\//i.test(url);
+  }
+
+  /**
    * Format a date string (ISO or "YYYY-MM-DD HH:MM:SS") into a
    * human-readable relative or absolute short date.
    */
@@ -271,6 +279,9 @@
           case 'applied':
             if (job.status !== 'applied') return false;
             break;
+          case 'saved':
+            if (job.status !== 'saved') return false;
+            break;
           case 'not_applied':
             if (job.status === 'applied') return false;
             break;
@@ -321,14 +332,19 @@
       const applied = job.status === 'applied';
       const hasMaterials = job.has_materials;
 
-      // Action buttons
+      // Action buttons — quote job.id in onclick to keep it a string (C1)
       const generateBtn = hasMaterials
-        ? `<button class="btn btn-sm btn-view" onclick="viewMaterials(${job.id})">👁 View</button>`
-        : `<button class="btn btn-sm btn-generate" onclick="generateMaterials(${job.id}, this)">✨ Generate</button>`;
+        ? `<button class="btn btn-sm btn-view" onclick="viewMaterials('${job.id}')">👁 View</button>`
+        : `<button class="btn btn-sm btn-generate" onclick="generateMaterials('${job.id}', this)">✨ Generate</button>`;
 
-      const applyLink = job.url
-        ? `<a href="${escapeHtml(job.url)}" target="_blank" rel="noopener" class="btn btn-sm btn-outline">↗ Apply</a>`
+      // Validate URL protocol before rendering as a link (W6)
+      const applyLink = isSafeUrl(job.url)
+        ? `<a href="${escapeHtml(job.url)}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline">↗ Apply</a>`
         : `<span class="btn btn-sm btn-disabled btn-outline">No link</span>`;
+
+      const titleLink = isSafeUrl(job.url)
+        ? `<a href="${escapeHtml(job.url)}" target="_blank" rel="noopener noreferrer" class="title-text">${escapeHtml(job.title || 'Untitled')}</a>`
+        : `<span class="title-text">${escapeHtml(job.title || 'Untitled')}</span>`;
 
       return `
         <tr>
@@ -343,7 +359,7 @@
           </td>
           <td>
             <div class="title-cell">
-              <a href="${escapeHtml(job.url || '#')}" target="_blank" rel="noopener" class="title-text">${escapeHtml(job.title || 'Untitled')}</a>
+              ${titleLink}
               <span class="track-badge ${trackClass(job.track)}">${trackLabel(job.track)}</span>
             </div>
           </td>
@@ -362,8 +378,9 @@
           </td>
           <td class="applied-cell">
             <input type="checkbox" class="applied-check" ${applied ? 'checked' : ''}
-              onchange="toggleApplied(${job.id}, this.checked, this)"
-              title="Mark as applied" />
+              onchange="toggleApplied('${job.id}', this.checked, this)"
+              title="Mark as applied"
+              aria-label="Mark as applied" />
           </td>
         </tr>
       `;
@@ -424,8 +441,9 @@
       return;
     }
 
-    // Find the job in our local data for convenience fields
-    const job = allJobs.find(j => j.id === jobId);
+    // Find the job in our local data for convenience fields.
+    // ids are stored as strings in jobs.json — compare as strings (C1).
+    const job = allJobs.find(j => String(j.id) === String(jobId));
     if (!job) {
       showToast('Job not found in local data.', 'error');
       return;
@@ -487,7 +505,7 @@
       return;
     }
 
-    const job = allJobs.find(j => j.id === jobId);
+    const job = allJobs.find(j => String(j.id) === String(jobId));
     if (!job) return;
 
     const prevStatus = job.status;

@@ -74,6 +74,7 @@
         <option value="found">New (found)</option>
         <option value="materials_ready">Materials Ready</option>
         <option value="applied">Applied</option>
+        <option value="saved">Saved</option>
         <option value="not_applied">Not Applied</option>
       </select>
     </div>
@@ -113,8 +114,8 @@
 
     <div class="empty-state" id="empty-state" style="display:none;">
       <p class="empty-icon">📭</p>
-      <p class="empty-text">No jobs match the current filters.</p>
-      <p class="empty-hint">Try adjusting filters or refresh to load new postings.</p>
+      <p class="empty-text" id="empty-text">No jobs match the current filters.</p>
+      <p class="empty-hint" id="empty-hint">Try adjusting filters or refresh to load new postings.</p>
     </div>
 
     <div class="loading-state" id="loading-state">

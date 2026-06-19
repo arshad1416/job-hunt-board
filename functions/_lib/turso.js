@@ -33,6 +33,31 @@ function extractValue(cell) {
 }
 
 /**
+ * Extract and validate the result object from a Turso pipeline response entry.
+ * Throws a descriptive error if the response shape is unrecognized (W14 —
+ * previously a silent failure returned empty rows / zero affected rows).
+ */
+function extractTursoResult(first) {
+  if (!first) throw new Error('Turso returned no results');
+  if (first.type === 'error') {
+    throw new Error('Turso error: ' + (first.error?.message || 'unknown'));
+  }
+  const result =
+    first.response?.result ||
+    first.response?.execute?.result ||
+    first.result ||
+    first;
+  if (!result || typeof result !== 'object' || Array.isArray(result)) {
+    throw new Error(
+      'Turso response has unrecognized shape: no result object ' +
+      '(entry type=' + (first && first.type) + ', keys=' +
+      JSON.stringify(Object.keys(first || {})) + ')'
+    );
+  }
+  return result;
+}
+
+/**
  * Execute a SQL query via the Turso v2 pipeline API and return rows
  * as an array of plain objects keyed by column name.
  *
@@ -75,20 +100,17 @@ async function tursoQuery(env, sql, args = []) {
   const results = data.results || [];
   const first = results[0];
 
-  if (!first) throw new Error('Turso returned no results');
-  if (first.type === 'error') {
-    throw new Error('Turso error: ' + (first.error?.message || 'unknown'));
-  }
-
-  // Navigate the response structure (handles both known formats)
-  const result =
-    first.response?.result ||
-    first.response?.execute?.result ||
-    first.result ||
-    first;
+  // Extract + validate the result shape (throws on unrecognized structure)
+  const result = extractTursoResult(first);
 
   const cols = result.cols || [];
   const rows = result.rows || [];
+  if (!Array.isArray(cols) || !Array.isArray(rows)) {
+    throw new Error(
+      'Turso response missing cols/rows arrays (entry type=' +
+      (first && first.type) + ')'
+    );
+  }
 
   // Map rows to objects keyed by column name
   return rows.map(row => {
@@ -143,16 +165,8 @@ async function tursoExecute(env, sql, args = []) {
   const results = data.results || [];
   const first = results[0];
 
-  if (!first) throw new Error('Turso returned no results');
-  if (first.type === 'error') {
-    throw new Error('Turso error: ' + (first.error?.message || 'unknown'));
-  }
-
-  const result =
-    first.response?.result ||
-    first.response?.execute?.result ||
-    first.result ||
-    first;
+  // Extract + validate the result shape (throws on unrecognized structure)
+  const result = extractTursoResult(first);
 
   return {
     affectedRowCount: result.affected_row_count || 0,

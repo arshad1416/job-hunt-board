@@ -224,6 +224,9 @@ select { cursor: pointer; }
    MOBILE — <768px: table → cards
    ═══════════════════════════════════════════════════════════════ */
 @media (max-width: 767px) {
+  /* Sticky table header sits below the sticky topbar (W2) */
+  .jobs-table thead th { top: 56px; }
+
   .topbar { padding: 8px 10px; flex-wrap: wrap; }
   .topbar-title { font-size: 0.9rem; }
   .topbar-right .updated-label { display: none; }
@@ -326,11 +329,11 @@ select { cursor: pointer; }
     color: var(--accent);
   }
 
-  /* Applied checkbox — next to score */
+  /* Applied checkbox — offset right to avoid overlapping the score bar (W1) */
   .jobs-table td:nth-child(10) {
     position: absolute;
     top: 12px;
-    right: 48px;
+    right: 86px;
   }
   .applied-check { width: 18px; height: 18px; }
 
