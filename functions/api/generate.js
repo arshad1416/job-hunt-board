@@ -1,206 +1,268 @@
+/* ═══════════════════════════════════════════════════════════════
+   POST /api/generate
+   Auth: X-Auth-Token required (enforced by _middleware.js)
+
+   Flow:
+   1. Parse body { job_id, title?, company? }
+   2. Fetch full job row from Turso (parameterized)
+   3. Call GLM-5.2 (OpenCode Go) → resume.md + cover_letter.md
+   4. Store in R2:  materials/<job_id>/{resume,cover_letter}.md
+   5. Update Turso: status='materials_ready'
+   6. Return material URLs
+   ═══════════════════════════════════════════════════════════════ */
+
+import { tursoQuery, tursoExecute } from '../_lib/turso.js';
+
+const GLM_ENDPOINT = 'https://opencode.ai/zen/go/v1/chat/completions';
+const GLM_MODEL = 'glm-5.2';
+
+// ── Candidate profile (embedded — same as Pi-side resume_profile.yaml) ──
+const CANDIDATE_PROFILE = `
+Name: Arshad Kazi
+Location: Toronto, Ontario, Canada
+Target roles: EV Commercial (Regional Sales Manager, Head of Sales, Commercial Director)
+              AI/Engineering (AI Engineer, ML Engineer, Full Stack Engineer)
+
+EV Commercial highlights:
+- 8+ years in automotive / EV sales leadership and dealer network development
+- Launched EV OEM dealer networks across Ontario and Eastern Canada
+- Proven track record scaling revenue from $0 to $20M+ in emerging EV markets
+- Deep relationships with BYD, Geely, Zeekr, and other Chinese EV OEMs entering Canada
+
+AI/Engineering highlights:
+- Full-stack development (Python, TypeScript, React, Node.js, Cloudflare Workers)
+- Machine learning and LLM integration (OpenAI, fine-tuning, RAG pipelines)
+- Built production AI systems serving 10K+ users
+- Cloud architecture (AWS, Cloudflare, Turso/libSQL)
+
+Strengths: cross-functional leadership, go-to-market strategy, technical depth,
+bilingual (English/Hindi/Urdu), willing to relocate or travel extensively.
+`;
+
+// ── Prompt templates ──
+function resumePrompt(job) {
+  return `You are an expert resume writer. Create a tailored, professional resume in Markdown format
+for the following job posting. Use the candidate profile below and tailor the experience,
+skills, and summary to match the job requirements exactly.
+
+CANDIDATE PROFILE:
+${CANDIDATE_PROFILE}
+
+JOB DETAILS:
+- Title: ${job.title || 'N/A'}
+- Company: ${job.company || 'N/A'}
+- Location: ${job.location || 'N/A'}
+- Salary: ${job.salary || 'Not specified'}
+- Track: ${job.track || 'general'}
+- Notes: ${job.notes || 'N/A'}
+
+INSTRUCTIONS:
+1. Write the resume in clean Markdown (## for sections, ** for emphasis)
+2. Start with a compelling professional summary (3-4 lines) tailored to THIS role
+3. Include relevant experience bullet points that map to the job requirements
+4. List key skills aligned with the position
+5. Keep it to one page (concise, impactful bullets)
+6. Do NOT include contact details beyond name and location
+7. Output ONLY the resume markdown — no preamble, no explanations
+
+Begin:`;
+}
+
+function coverLetterPrompt(job) {
+  return `You are an expert cover letter writer. Create a compelling, tailored cover letter
+in Markdown format for the following job posting.
+
+CANDIDATE PROFILE:
+${CANDIDATE_PROFILE}
+
+JOB DETAILS:
+- Title: ${job.title || 'N/A'}
+- Company: ${job.company || 'N/A'}
+- Location: ${job.location || 'N/A'}
+- Salary: ${job.salary || 'Not specified'}
+- Track: ${job.track || 'general'}
+- Notes: ${job.notes || 'N/A'}
+
+INSTRUCTIONS:
+1. Write in a professional but warm tone
+2. Address it to the hiring manager (use "Dear Hiring Manager" if no name)
+3. Open with a strong hook referencing the specific role and company
+4. Highlight 2-3 key achievements most relevant to THIS job
+5. Show genuine enthusiasm and cultural fit
+6. Close with a clear call to action
+7. Keep it to 3-4 paragraphs (under 350 words)
+8. Output ONLY the cover letter — no preamble, no explanations
+
+Begin:`;
+}
+
 /**
- * POST /api/generate
- * Generates tailored resume + cover letter via GLM-5.2 (OpenCode Go),
- * stores in R2, returns download URLs.
+ * Call GLM-5.2 via the OpenCode Go chat completions API.
+ * @returns {Promise<string>} the generated text content
  */
-export async function onRequest(context) {
-  const { request, env } = context;
-  const corsHeaders = cors();
-
-  if (request.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
-
-  if (request.method !== 'POST') {
-    return new Response('Method not allowed', { status: 405, headers: corsHeaders });
-  }
-
-  try {
-    const { job_id, title, company } = await request.json();
-    if (!job_id || !title || !company) {
-      return new Response(JSON.stringify({ error: 'Missing required fields: job_id, title, company' }), {
-        status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders },
-      });
-    }
-
-    // Fetch job details from Turso
-    const job = await fetchJobFromTurso(job_id, env);
-    if (!job) {
-      return new Response(JSON.stringify({ error: 'Job not found in database' }), {
-        status: 404, headers: { 'Content-Type': 'application/json', ...corsHeaders },
-      });
-    }
-
-    // Generate resume via GLM-5.2
-    const resumeMd = await callGLM(generateResumePrompt(job), env);
-    // Generate cover letter via GLM-5.2
-    const coverMd = await callGLM(generateCoverLetterPrompt(job), env);
-
-    // Store in R2
-    const key = `materials/${job_id}`;
-    const r2 = env.JOB_MATERIALS_BUCKET;
-    if (r2) {
-      await r2.put(`${key}/resume.md`, resumeMd, {
-        httpMetadata: { contentType: 'text/markdown' },
-      });
-      await r2.put(`${key}/cover_letter.md`, coverMd, {
-        httpMetadata: { contentType: 'text/markdown' },
-      });
-      await r2.put(`${key}/job_details.json`, JSON.stringify(job, null, 2), {
-        httpMetadata: { contentType: 'application/json' },
-      });
-    }
-
-    // Update Turso status
-    await updateTursoStatus(job_id, 'materials_ready', env);
-
-    return new Response(JSON.stringify({
-      success: true,
-      job_id,
-      materials: {
-        resume: `/api/materials/${job_id}/resume.md`,
-        cover_letter: `/api/materials/${job_id}/cover_letter.md`,
-      },
-    }), { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
-
-  } catch (err) {
-    console.error('Generate error:', err);
-    return new Response(JSON.stringify({ error: err.message }), {
-      status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders },
-    });
-  }
-}
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function cors() {
-  return {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
-  };
-}
-
-async function fetchJobFromTurso(jobId, env) {
-  const url = env.TURSO_URL || 'https://morning-briefing-arshad1416.aws-us-east-1.turso.io';
-  const token = env.TURSO_TOKEN;
-  if (!token) throw new Error('TURSO_TOKEN not configured');
-
-  const sql = `SELECT * FROM applications WHERE id = ${parseInt(jobId) || 0}`;
-  const body = JSON.stringify({ requests: [{ type: 'execute', stmt: { sql } }] });
-
-  const res = await fetch(`${url}/v2/pipeline`, {
+async function callGLM(apiKey, prompt) {
+  const res = await fetch(GLM_ENDPOINT, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body,
-  });
-
-  if (!res.ok) throw new Error(`Turso fetch failed: ${res.status}`);
-  const data = await res.json();
-
-  try {
-    const result = data.results[0].response.result;
-    const cols = result.cols.map(c => c.name);
-    const row = result.rows[0];
-    if (!row) return null;
-    const job = {};
-    row.forEach((cell, i) => { job[cols[i]] = cell.value; });
-    return job;
-  } catch {
-    return null;
-  }
-}
-
-async function updateTursoStatus(jobId, status, env) {
-  const url = env.TURSO_URL || 'https://morning-briefing-arshad1416.aws-us-east-1.turso.io';
-  const token = env.TURSO_TOKEN;
-  if (!token) return;
-
-  const sql = `UPDATE applications SET status = '${status.replace(/'/g, "''")}', updated_at = datetime('now') WHERE id = ${parseInt(jobId) || 0}`;
-  const body = JSON.stringify({ requests: [{ type: 'execute', stmt: { sql } }] });
-
-  await fetch(`${url}/v2/pipeline`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body,
-  });
-}
-
-async function callGLM(prompt, env) {
-  const apiKey = env.OPENCODE_GO_API_KEY;
-  if (!apiKey) throw new Error('OPENCODE_GO_API_KEY not configured');
-
-  const payload = {
-    model: 'glm-5.2',
-    messages: [
-      { role: 'system', content: 'You are an expert career coach and resume writer. Output ONLY the requested document — no explanations, no commentary.' },
-      { role: 'user', content: prompt },
-    ],
-    temperature: 0.3,
-    max_tokens: 8192,
-  };
-
-  const res = await fetch('https://opencode.ai/zen/go/v1/chat/completions', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    headers: {
+      'Authorization': 'Bearer ' + apiKey,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: GLM_MODEL,
+      messages: [
+        { role: 'user', content: prompt }
+      ],
+      temperature: 0.7,
+      max_tokens: 2000
+    })
   });
 
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`GLM API error: ${res.status} ${err.substring(0, 300)}`);
+    const text = await res.text().catch(() => '');
+    throw new Error('GLM API HTTP ' + res.status + ': ' + text.slice(0, 300));
   }
 
   const data = await res.json();
-  return data.choices[0].message.content;
+  // OpenAI-compatible response format
+  const content = data.choices?.[0]?.message?.content;
+  if (!content) {
+    throw new Error('GLM API returned empty content');
+  }
+  return content;
 }
 
-function generateResumePrompt(job) {
-  return `Generate an ATS-optimized resume tailored to this job posting.
+export async function onRequestPost(context) {
+  const { request, env } = context;
 
-CANDIDATE PROFILE:
-- Current: Regional Sales Manager at CARFii (automotive finance brokerage), managing 62 dealer partners
-- Past: Tesla Regional Delivery Operations Manager Canada (2014-2017) — owned National Product Launch, MTO/MOF liaison
-- Past: SHIFT Motors Business Manager (2017-2018) — launched Canada's first third-party Tesla warranty
-- Past: Veterans Affairs Canada National Learning Officer (2022-2024) — e-learning platform deployment
-- Personal projects: ShiftLogic.ai (automotive scraping), Hermes Agent (multi-model AI agent system)
-- OMVIC Certified since 2017
-- Education: Studies at TMU (Business Technology Management) and Athabasca University
+  // ── 1. Parse body ──
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: 'Invalid JSON body' }, 400);
+  }
 
-TARGET JOB:
-Title: ${job.title}
-Company: ${job.company}
-Location: ${job.location || 'Not specified'}
+  const jobId = body.job_id;
+  if (!jobId) {
+    return json({ error: 'Missing required field: job_id' }, 400);
+  }
 
-RULES:
-1. 1-2 pages max, ATS-friendly formatting
-2. Prioritize experience most relevant to the target role
-3. Use strong action verbs, quantify results where possible
-4. Never fabricate experience
-5. Label Hermes Agent as a personal project, NOT employment
-6. Use "Studies" wording for incomplete degrees
-7. Output as clean markdown only`;
+  // ── 2. Fetch full job from Turso ──
+  let job;
+  try {
+    const rows = await tursoQuery(
+      env,
+      'SELECT * FROM applications WHERE id = ?',
+      [jobId]
+    );
+    job = rows[0];
+  } catch (err) {
+    console.error('Turso fetch error:', err);
+    return json({ error: 'Database error: could not fetch job' }, 500);
+  }
+
+  if (!job) {
+    return json({ error: 'Job not found: ' + jobId }, 404);
+  }
+
+  // ── 3. Check if materials already exist (idempotent shortcut) ──
+  if (env.JOB_MATERIALS_BUCKET) {
+    try {
+      const existing = await env.JOB_MATERIALS_BUCKET.head(
+        `materials/${jobId}/resume.md`
+      );
+      if (existing) {
+        // Materials already generated — return URLs without regenerating
+        await tursoExecute(
+          env,
+          "UPDATE applications SET status='materials_ready', updated_at=datetime('now') WHERE id=?",
+          [jobId]
+        );
+        return json({
+          success: true,
+          job_id: jobId,
+          cached: true,
+          materials: {
+            resume: `/api/materials/${jobId}/resume.md`,
+            cover_letter: `/api/materials/${jobId}/cover_letter.md`
+          }
+        });
+      }
+    } catch {
+      // R2 check failed — proceed to generate
+    }
+  }
+
+  // ── 4. Call GLM-5.2 for resume + cover letter ──
+  let resumeMd, coverMd;
+  try {
+    [resumeMd, coverMd] = await Promise.all([
+      callGLM(env.OPENCODE_GO_API_KEY, resumePrompt(job)),
+      callGLM(env.OPENCODE_GO_API_KEY, coverLetterPrompt(job))
+    ]);
+  } catch (err) {
+    console.error('GLM generation error:', err);
+    return json({ error: 'AI generation failed: ' + err.message }, 502);
+  }
+
+  // ── 5. Store in R2 ──
+  if (env.JOB_MATERIALS_BUCKET) {
+    const key = `materials/${jobId}`;
+    const jobDetails = JSON.stringify({
+      job_id: jobId,
+      title: job.title,
+      company: job.company,
+      location: job.location,
+      salary: job.salary,
+      track: job.track,
+      generated_at: new Date().toISOString()
+    }, null, 2);
+
+    try {
+      await Promise.all([
+        env.JOB_MATERIALS_BUCKET.put(`${key}/resume.md`, resumeMd, {
+          httpMetadata: { contentType: 'text/markdown; charset=utf-8' }
+        }),
+        env.JOB_MATERIALS_BUCKET.put(`${key}/cover_letter.md`, coverMd, {
+          httpMetadata: { contentType: 'text/markdown; charset=utf-8' }
+        }),
+        env.JOB_MATERIALS_BUCKET.put(`${key}/job_details.json`, jobDetails, {
+          httpMetadata: { contentType: 'application/json' }
+        })
+      ]);
+    } catch (err) {
+      console.error('R2 store error:', err);
+      return json({ error: 'Storage error: could not save materials' }, 500);
+    }
+  }
+
+  // ── 6. Update Turso status ──
+  try {
+    await tursoExecute(
+      env,
+      "UPDATE applications SET status='materials_ready', updated_at=datetime('now') WHERE id=?",
+      [jobId]
+    );
+  } catch (err) {
+    console.error('Turso update error:', err);
+    // Non-fatal — materials are in R2, just status not updated
+  }
+
+  // ── 7. Return success ──
+  return json({
+    success: true,
+    job_id: jobId,
+    materials: {
+      resume: `/api/materials/${jobId}/resume.md`,
+      cover_letter: `/api/materials/${jobId}/cover_letter.md`
+    }
+  });
 }
 
-function generateCoverLetterPrompt(job) {
-  return `Write a concise, compelling cover letter for this application.
-
-CANDIDATE: Arshad Kazi — EV Commercial Leader & AI Systems Builder
-CURRENT ROLE: Regional Sales Manager, CARFii (62 dealer partners, automotive finance)
-KEY STRENGTHS: Tesla's Canadian NPI launch (primary MTO/MOF liaison, 100%+ YoY growth),
-Canada's first third-party Tesla warranty, AI agent system (Hermes Agent), OMVIC certified
-
-TARGET JOB:
-Title: ${job.title}
-Company: ${job.company}
-Location: ${job.location || 'Not specified'}
-
-FORMAT: 3 paragraphs max (Problem / Evidence / Close)
-1. OPENING: Lead with a business problem the company faces, position Arshad as the solver
-2. EVIDENCE: 2-3 specific achievements that directly address the company's needs
-3. CLOSE: Specific, confident call to action
-
-RULES:
-- Max 300 words
-- Never fabricate claims
-- Be direct, no generic fluff
-- Output plain text only`;
+/** Helper: JSON response */
+function json(obj, status = 200) {
+  return new Response(JSON.stringify(obj), {
+    status,
+    headers: { 'Content-Type': 'application/json' }
+  });
 }

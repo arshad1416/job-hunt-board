@@ -1,66 +1,70 @@
-/**
- * POST /api/applied
- * Toggle job application status in Turso.
- */
-export async function onRequest(context) {
+/* ═══════════════════════════════════════════════════════════════
+   POST /api/applied
+   Auth: X-Auth-Token required (enforced by _middleware.js)
+
+   Body: { "job_id": 123, "applied": true }
+   Updates applications.status to 'applied' or 'found' and sets
+   applied_at accordingly. Uses parameterized statements.
+   ═══════════════════════════════════════════════════════════════ */
+
+import { tursoExecute } from '../_lib/turso.js';
+
+export async function onRequestPost(context) {
   const { request, env } = context;
-  const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
-  };
 
-  if (request.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
-
-  if (request.method !== 'POST') {
-    return new Response('Method not allowed', { status: 405, headers: corsHeaders });
+  // ── Parse body ──
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: 'Invalid JSON body' }, 400);
   }
+
+  const jobId = body.job_id;
+  const applied = body.applied;
+
+  if (jobId === undefined || jobId === null) {
+    return json({ error: 'Missing required field: job_id' }, 400);
+  }
+
+  if (typeof applied !== 'boolean') {
+    return json({ error: 'Missing or invalid field: applied (must be boolean)' }, 400);
+  }
+
+  // Determine new status
+  const newStatus = applied ? 'applied' : 'found';
 
   try {
-    const { job_id, applied } = await request.json();
-    if (!job_id) {
-      return new Response(JSON.stringify({ error: 'Missing job_id' }), {
-        status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders },
-      });
+    const result = await tursoExecute(
+      env,
+      'UPDATE applications SET status=?, applied_at=?, updated_at=datetime(\'now\') WHERE id=?',
+      [
+        newStatus,
+        applied ? new Date().toISOString() : null,
+        jobId
+      ]
+    );
+
+    if (result.affectedRowCount === 0) {
+      return json({ error: 'Job not found: ' + jobId }, 404);
     }
 
-    const id = parseInt(job_id) || 0;
-    const status = applied ? 'applied' : 'found';
-    const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
-
-    const sql = applied
-      ? `UPDATE applications SET status = 'applied', applied_at = '${timestamp}', updated_at = datetime('now') WHERE id = ${id}`
-      : `UPDATE applications SET status = 'found', applied_at = NULL, updated_at = datetime('now') WHERE id = ${id}`;
-
-    const url = env.TURSO_URL || 'https://morning-briefing-arshad1416.aws-us-east-1.turso.io';
-    const token = env.TURSO_TOKEN;
-
-    if (!token) {
-      return new Response(JSON.stringify({ error: 'TURSO_TOKEN not configured' }), {
-        status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders },
-      });
-    }
-
-    const body = JSON.stringify({ requests: [{ type: 'execute', stmt: { sql } }] });
-    const res = await fetch(`${url}/v2/pipeline`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body,
+    return json({
+      success: true,
+      job_id: jobId,
+      status: newStatus,
+      applied: applied
     });
-
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`Turso error: ${err.substring(0, 200)}`);
-    }
-
-    return new Response(JSON.stringify({ success: true, job_id, status }), {
-      status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders },
-    });
-
   } catch (err) {
-    console.error('Applied toggle error:', err);
-    return new Response(JSON.stringify({ error: err.message }), {
-      status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders },
-    });
+    console.error('Turso update error:', err);
+    return json({ error: 'Database error: could not update status' }, 500);
   }
+}
+
+/** Helper: JSON response */
+function json(obj, status = 200) {
+  return new Response(JSON.stringify(obj), {
+    status,
+    headers: { 'Content-Type': 'application/json' }
+  });
 }

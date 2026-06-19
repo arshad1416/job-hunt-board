@@ -1,118 +1,174 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Job Hunt Dashboard — Arshad Kazi</title>
-  <link rel="stylesheet" href="style.css">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Job Hunt Board</title>
+  <link rel="stylesheet" href="/style.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📋</text></svg>" />
+  <script src="/app.js" defer></script>
 </head>
 <body>
-  <nav class="topbar">
-    <div class="topbar-inner">
-      <h1 class="logo">📋 Job Hunt Tracker</h1>
-      <div class="topbar-meta">
-        <span class="badge" id="job-count-badge">0 jobs</span>
-        <span class="last-updated" id="last-updated">—</span>
+
+  <!-- ════════════════ TOPBAR ════════════════ -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <h1 class="topbar-title">🎯 Job Hunt Board</h1>
+      <span class="badge badge-count" id="job-count-badge">0 jobs</span>
+    </div>
+    <div class="topbar-right">
+      <span class="updated-label">Updated: <span id="last-updated">—</span></span>
+      <button class="btn btn-sm btn-ghost" id="btn-refresh" title="Reload data">↻ Refresh</button>
+      <button class="btn btn-sm btn-ghost" id="btn-token" title="Set auth token">🔑 Token</button>
+    </div>
+  </header>
+
+  <!-- ════════════════ STATS BAR ════════════════ -->
+  <section class="stats-bar" id="stats-bar">
+    <div class="stat-card">
+      <span class="stat-value" id="stat-total">0</span>
+      <span class="stat-label">Total</span>
+    </div>
+    <div class="stat-card">
+      <span class="stat-value" id="stat-new">0</span>
+      <span class="stat-label">New (24h)</span>
+    </div>
+    <div class="stat-card stat-ev">
+      <span class="stat-value" id="stat-ev">0</span>
+      <span class="stat-label">EV</span>
+    </div>
+    <div class="stat-card stat-ai">
+      <span class="stat-value" id="stat-ai">0</span>
+      <span class="stat-label">AI</span>
+    </div>
+    <div class="stat-card">
+      <span class="stat-value" id="stat-applied">0</span>
+      <span class="stat-label">Applied</span>
+    </div>
+    <div class="stat-card">
+      <span class="stat-value" id="stat-materials">0</span>
+      <span class="stat-label">Materials Ready</span>
+    </div>
+  </section>
+
+  <!-- ════════════════ FILTER ROW ════════════════ -->
+  <section class="filters">
+    <div class="filter-group">
+      <label class="filter-label">Track</label>
+      <div class="segmented" id="track-filter">
+        <button class="seg-btn active" data-track="all">All</button>
+        <button class="seg-btn" data-track="ev_commercial">EV</button>
+        <button class="seg-btn" data-track="ai_engineering">AI</button>
       </div>
     </div>
-  </nav>
 
-  <main class="container">
-    <!-- Filters -->
-    <section class="filters">
-      <div class="filter-row">
-        <div class="filter-group">
-          <label>Track</label>
-          <select id="filter-track">
-            <option value="all">All Tracks</option>
-            <option value="ev_commercial">🚗 EV Commercial</option>
-            <option value="ai_engineering">🤖 AI / Engineering</option>
-          </select>
-        </div>
-        <div class="filter-group">
-          <label>Min Score</label>
-          <select id="filter-min-score">
-            <option value="0">Any</option>
-            <option value="70">70+</option>
-            <option value="80">80+</option>
-            <option value="90">90+</option>
-          </select>
-        </div>
-        <div class="filter-group">
-          <label>Status</label>
-          <select id="filter-status">
-            <option value="all">All</option>
-            <option value="found">New</option>
-            <option value="applied">Applied</option>
-            <option value="materials_ready">Materials Ready</option>
-            <option value="saved">Saved</option>
-          </select>
-        </div>
-        <div class="filter-group">
-          <label>Search</label>
-          <input type="text" id="filter-search" placeholder="Title / Company / Keyword...">
-        </div>
-        <div class="filter-actions">
-          <button id="btn-refresh" class="btn btn-outline" title="Refresh data">↻</button>
-        </div>
-      </div>
-    </section>
+    <div class="filter-group">
+      <label class="filter-label" for="min-score">Min Score: <span id="min-score-val">0</span></label>
+      <input type="range" id="min-score" min="0" max="100" value="0" step="5" />
+    </div>
 
-    <!-- Stats bar -->
-    <section class="stats-bar" id="stats-bar">
-      <div class="stat"><span class="stat-value" id="stat-total">0</span> Total</div>
-      <div class="stat"><span class="stat-value" id="stat-new">0</span> New</div>
-      <div class="stat"><span class="stat-value" id="stat-ev">0</span> EV Commercial</div>
-      <div class="stat"><span class="stat-value" id="stat-ai">0</span> AI / Engineering</div>
-      <div class="stat"><span class="stat-value" id="stat-applied">0</span> Applied</div>
-    </section>
+    <div class="filter-group">
+      <label class="filter-label" for="status-filter">Status</label>
+      <select id="status-filter">
+        <option value="all">All</option>
+        <option value="found">New (found)</option>
+        <option value="materials_ready">Materials Ready</option>
+        <option value="applied">Applied</option>
+        <option value="not_applied">Not Applied</option>
+      </select>
+    </div>
 
-    <!-- Table -->
-    <section class="table-wrapper">
-      <table id="jobs-table">
-        <thead>
-          <tr>
-            <th class="col-rank">#</th>
-            <th class="col-score">Score</th>
-            <th class="col-title">Job Title</th>
-            <th class="col-company">Company</th>
-            <th class="col-salary">Salary</th>
-            <th class="col-desc">Summary</th>
-            <th class="col-posted">Posted</th>
-            <th class="col-location">Location</th>
-            <th class="col-actions">Actions</th>
-            <th class="col-applied">✓</th>
-          </tr>
-        </thead>
-        <tbody id="jobs-tbody">
-          <tr><td colspan="10" class="loading-msg">Loading jobs...</td></tr>
-        </tbody>
-      </table>
-    </section>
+    <div class="filter-group filter-grow">
+      <label class="filter-label" for="search-box">Search</label>
+      <input type="text" id="search-box" placeholder="Title, company, location…" />
+    </div>
+
+    <div class="filter-group">
+      <label class="filter-label">&nbsp;</label>
+      <button class="btn btn-sm btn-outline" id="btn-clear-filters">Clear Filters</button>
+    </div>
+  </section>
+
+  <!-- ════════════════ TABLE ════════════════ -->
+  <main class="table-wrap">
+    <table class="jobs-table" id="jobs-table">
+      <thead>
+        <tr>
+          <th class="col-rank">#</th>
+          <th class="col-score">Score</th>
+          <th class="col-title">Title</th>
+          <th class="col-company">Company</th>
+          <th class="col-salary">Salary</th>
+          <th class="col-summary">Summary</th>
+          <th class="col-posted">Posted</th>
+          <th class="col-location">Location</th>
+          <th class="col-actions">Actions</th>
+          <th class="col-applied">Applied</th>
+        </tr>
+      </thead>
+      <tbody id="jobs-tbody">
+        <!-- rows injected by app.js -->
+      </tbody>
+    </table>
+
+    <div class="empty-state" id="empty-state" style="display:none;">
+      <p class="empty-icon">📭</p>
+      <p class="empty-text">No jobs match the current filters.</p>
+      <p class="empty-hint">Try adjusting filters or refresh to load new postings.</p>
+    </div>
+
+    <div class="loading-state" id="loading-state">
+      <p class="loading-spinner"></p>
+      <p>Loading jobs…</p>
+    </div>
   </main>
 
-  <!-- Toast notification -->
-  <div id="toast" class="toast hidden"></div>
-
-  <!-- Generate modal -->
-  <div id="generate-modal" class="modal hidden">
-    <div class="modal-content">
+  <!-- ════════════════ GENERATE MODAL ════════════════ -->
+  <div class="modal-overlay" id="generate-modal" style="display:none;">
+    <div class="modal">
       <div class="modal-header">
-        <h2>Generating Materials</h2>
-        <button class="modal-close" id="modal-close">&times;</button>
+        <h2 id="modal-title">Generating Materials…</h2>
+        <button class="modal-close" id="modal-close">×</button>
       </div>
       <div class="modal-body" id="modal-body">
-        <div class="spinner"></div>
-        <p id="modal-status">Generating resume &amp; cover letter via GLM-5.2...</p>
-      </div>
-      <div class="modal-footer" id="modal-footer">
-        <button class="btn btn-outline" id="modal-close-btn">Close</button>
+        <div class="modal-spinner-wrap">
+          <div class="spinner"></div>
+          <p class="modal-status" id="modal-status">Calling GLM-5.2 to tailor your resume and cover letter…</p>
+        </div>
+        <div class="modal-result" id="modal-result" style="display:none;">
+          <p class="result-success">✅ Materials generated successfully!</p>
+          <div class="result-links">
+            <a href="#" id="link-resume" target="_blank" class="btn btn-primary">📄 View Resume</a>
+            <a href="#" id="link-cover" target="_blank" class="btn btn-primary">✉️ View Cover Letter</a>
+          </div>
+        </div>
+        <div class="modal-error" id="modal-error" style="display:none;">
+          <p class="error-text" id="modal-error-text">Something went wrong.</p>
+        </div>
       </div>
     </div>
   </div>
 
-  <script src="app.js"></script>
+  <!-- ════════════════ TOKEN MODAL ════════════════ -->
+  <div class="modal-overlay" id="token-modal" style="display:none;">
+    <div class="modal modal-sm">
+      <div class="modal-header">
+        <h2>Set Auth Token</h2>
+        <button class="modal-close" id="token-modal-close">×</button>
+      </div>
+      <div class="modal-body">
+        <p class="token-hint">Enter your <code>DASHBOARD_AUTH_TOKEN</code> to enable Generate &amp; Apply actions. It is stored locally in your browser only.</p>
+        <input type="password" id="token-input" placeholder="Paste auth token…" class="token-input" />
+        <div class="token-actions">
+          <button class="btn btn-primary" id="token-save">Save Token</button>
+          <button class="btn btn-outline" id="token-clear">Clear</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════ TOAST CONTAINER ════════════════ -->
+  <div class="toast-container" id="toast-container"></div>
+
 </body>
 </html>

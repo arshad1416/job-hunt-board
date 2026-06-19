@@ -1,0 +1,18 @@
+{
+  // Job Hunt Board — Cloudflare Pages configuration
+  // Mirrors non-secret bindings so the project is reproducible from the repo.
+  // Secrets (TURSO_TOKEN, OPENCODE_GO_API_KEY, DASHBOARD_AUTH_TOKEN) are set
+  // via the Cloudflare dashboard or `wrangler pages secret put <NAME>`.
+  "name": "job-hunt-board",
+  "compatibility_date": "2025-05-01",
+  "pages_build_output_dir": ".",
+  "r2_buckets": [
+    {
+      "binding": "JOB_MATERIALS_BUCKET",
+      "bucket_name": "job-hunt-materials"
+    }
+  ],
+  "vars": {
+    "TURSO_URL": "https://morning-briefing-arshad1416.aws-us-east-1.turso.io"
+  }
+}

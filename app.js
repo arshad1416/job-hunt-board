@@ -1,320 +1,657 @@
-/**
- * Job Hunt Dashboard — app.js
- * Reads jobs.json, renders table, handles Generate + Applied via Cloudflare Workers.
- */
+/* ═══════════════════════════════════════════════════════════════
+   Job Hunt Board — Frontend Controller (app.js)
+   Static-first: fetches /data/jobs.json, renders table, filters
+   client-side, calls /api/* for mutations only.
+   ═══════════════════════════════════════════════════════════════ */
 
-// ── Config ───────────────────────────────────────────────────────────────────
-const CONFIG = {
-  // Cloudflare Worker API base
-  apiBase: window.location.origin.replace(/\/$/, '') + '/api',
-  // Static data file (updated daily by Pi pipeline)
-  dataUrl: '/data/jobs.json',
-};
+(function () {
+  'use strict';
 
-// ── State ────────────────────────────────────────────────────────────────────
-let allJobs = [];
-let filteredJobs = [];
-let generationInProgress = new Set(); // job IDs currently being generated
+  // ── State ──────────────────────────────────────────────────────
+  let allJobs = [];
+  let filteredJobs = [];
+  const filters = {
+    track: 'all',
+    minScore: 0,
+    status: 'all',
+    search: ''
+  };
 
-// ── DOM refs ─────────────────────────────────────────────────────────────────
-const $ = (sel) => document.querySelector(sel);
-const $$ = (sel) => document.querySelectorAll(sel);
+  // ── DOM refs ───────────────────────────────────────────────────
+  const $ = (id) => document.getElementById(id);
+  const tbody = $('jobs-tbody');
+  const emptyState = $('empty-state');
+  const loadingState = $('loading-state');
 
-const tbody = $('#jobs-tbody');
-const filterTrack = $('#filter-track');
-const filterMinScore = $('#filter-min-score');
-const filterStatus = $('#filter-status');
-const filterSearch = $('#filter-search');
-const btnRefresh = $('#btn-refresh');
-const statTotal = $('#stat-total');
-const statNew = $('#stat-new');
-const statEv = $('#stat-ev');
-const statAi = $('#stat-ai');
-const statApplied = $('#stat-applied');
-const lastUpdated = $('#last-updated');
-const jobCountBadge = $('#job-count-badge');
-const toast = $('#toast');
-const modal = $('#generate-modal');
-const modalStatus = $('#modal-status');
-const modalBody = $('#modal-body');
+  // ═══════════════════════════════════════════════════════════════
+  // AUTH TOKEN MANAGEMENT
+  // ═══════════════════════════════════════════════════════════════
+  const TOKEN_KEY = 'jhb_auth_token';
 
-// ── Utility ──────────────────────────────────────────────────────────────────
-function formatDate(dateStr) {
-  if (!dateStr) return '—';
-  try {
-    const d = new Date(dateStr);
-    if (isNaN(d.getTime())) return dateStr;
-    const now = new Date();
-    const diff = (now - d) / (1000 * 60 * 60 * 24);
-    if (diff < 1) return 'Today';
-    if (diff < 2) return 'Yesterday';
-    return d.toLocaleDateString('en-CA', { month: 'short', day: 'numeric' });
-  } catch { return dateStr; }
-}
-
-function formatSalary(sal) {
-  if (!sal || sal === '—') return '—';
-  // Already formatted in the data
-  return sal;
-}
-
-function showToast(message, type = 'info', duration = 4000) {
-  toast.textContent = message;
-  toast.className = `toast ${type}`;
-  setTimeout(() => toast.classList.add('hidden'), duration);
-}
-
-function showModal(message) {
-  modalStatus.textContent = message || 'Generating materials...';
-  modalBody.innerHTML = `
-    <div class="spinner"></div>
-    <p>${modalStatus.textContent}</p>
-  `;
-  modal.classList.remove('hidden');
-}
-
-function hideModal() {
-  modal.classList.add('hidden');
-}
-
-function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
-}
-
-// ── Data Loading ─────────────────────────────────────────────────────────────
-async function loadJobs() {
-  try {
-    const res = await fetch(CONFIG.dataUrl + '?_=' + Date.now());
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    allJobs = Array.isArray(data) ? data : (data.jobs || []);
-    // Sort by score descending
-    allJobs.sort((a, b) => (b.score || 0) - (a.score || 0));
-    applyFilters();
-    updateStats();
-    updateLastUpdated();
-    jobCountBadge.textContent = `${allJobs.length} jobs`;
-  } catch (err) {
-    console.error('Failed to load jobs:', err);
-    tbody.innerHTML = `<tr><td colspan="10" class="loading-msg">
-      ❌ Failed to load jobs. ${err.message}<br>
-      <button class="btn btn-outline" onclick="location.reload()" style="margin-top:12px">Retry</button>
-    </td></tr>`;
+  function getToken() {
+    return localStorage.getItem(TOKEN_KEY) || '';
   }
-}
 
-// ── Filtering ────────────────────────────────────────────────────────────────
-function applyFilters() {
-  const track = filterTrack.value;
-  const minScore = parseInt(filterMinScore.value) || 0;
-  const status = filterStatus.value;
-  const search = filterSearch.value.toLowerCase().trim();
+  function setToken(token) {
+    localStorage.setItem(TOKEN_KEY, token.trim());
+  }
 
-  filteredJobs = allJobs.filter(job => {
-    // Track filter
-    if (track !== 'all' && job.track !== track) return false;
-    // Score filter
-    if ((job.score || 0) < minScore) return false;
-    // Status filter
-    if (status !== 'all' && job.status !== status) return false;
-    // Search filter
-    if (search) {
-      const haystack = `${job.title} ${job.company} ${job.location} ${job.description || ''}`.toLowerCase();
-      if (!haystack.includes(search)) return false;
+  function clearToken() {
+    localStorage.removeItem(TOKEN_KEY);
+  }
+
+  function authHeaders() {
+    const token = getToken();
+    const h = { 'Content-Type': 'application/json' };
+    if (token) h['X-Auth-Token'] = token;
+    return h;
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // UTILITY FUNCTIONS
+  // ═══════════════════════════════════════════════════════════════
+
+  function escapeHtml(str) {
+    if (str == null) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  /**
+   * Format a date string (ISO or "YYYY-MM-DD HH:MM:SS") into a
+   * human-readable relative or absolute short date.
+   */
+  function formatDate(dateStr) {
+    if (!dateStr) return '—';
+    try {
+      // Handle "YYYY-MM-DD HH:MM:SS" (SQLite format) by replacing space with T
+      let iso = dateStr;
+      if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(iso)) {
+        iso = iso.replace(' ', 'T') + 'Z';
+      }
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return dateStr;
+
+      const now = new Date();
+      const diffMs = now - d;
+      const diffH = Math.floor(diffMs / 3600000);
+      const diffD = Math.floor(diffH / 24);
+
+      if (diffH < 1) return 'just now';
+      if (diffH < 24) return diffH + 'h ago';
+      if (diffD === 1) return '1d ago';
+      if (diffD < 7) return diffD + 'd ago';
+      if (diffD < 30) return Math.floor(diffD / 7) + 'w ago';
+      return d.toLocaleDateString('en-CA', { month: 'short', day: 'numeric' });
+    } catch {
+      return dateStr || '—';
     }
-    return true;
-  });
-
-  renderTable();
-}
-
-// ── Rendering ────────────────────────────────────────────────────────────────
-function renderTable() {
-  if (filteredJobs.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="10" class="loading-msg">
-      🔍 No jobs match your filters.
-    </td></tr>`;
-    return;
   }
 
-  let html = '';
-  filteredJobs.forEach((job, idx) => {
-    const score = job.score || 0;
-    const isApplied = job.status === 'applied';
-    const isGenerating = generationInProgress.has(job.id);
-    const hasMaterials = job.status === 'materials_ready' || job.status === 'saved';
-    const appliedClass = isApplied ? 'status-applied' : '';
+  function formatSalary(salary) {
+    if (!salary || salary === 'null' || salary === 'None') return null;
+    return salary;
+  }
 
-    // Score color class
-    const scoreClass = score >= 70 ? 'score-high' : score >= 50 ? 'score-mid' : 'score-low';
+  /**
+   * Derive the "posted" date for a job.
+   * The Turso applications table does NOT have a posted_at column,
+   * so we fall back to found_at (when the Pi scraped it).
+   */
+  function getPostedDate(job) {
+    return job.posted_date || job.posted_at || job.found_at || '';
+  }
 
-    // Track badge
-    const trackClass = job.track === 'ev_commercial' ? 'track-ev' : 'track-ai';
-    const trackLabel = job.track === 'ev_commercial' ? 'EV' : 'AI';
+  /**
+   * Derive the summary text for a job.
+   * The Turso applications table does NOT have a description column,
+   * so we fall back to parsing the notes field (salary est | ask | summary).
+   */
+  function getSummary(job) {
+    if (job.summary && job.summary.trim()) return job.summary;
 
-    // Salary
-    const salaryDisplay = job.salary && job.salary !== '—'
-      ? escapeHtml(job.salary)
-      : job.suggested_ask
-        ? `<span class="text-muted">Ask: $${(+job.suggested_ask).toLocaleString()}</span>`
-        : '—';
+    // Fall back to notes field — the Pi stores pipe-delimited fragments:
+    // "Salary Est: $120K-$150K | Suggested Ask: $157K | Summary: <text>"
+    if (job.notes) {
+      const parts = job.notes.split('|');
+      for (const part of parts) {
+        const cleaned = part.trim();
+        // Look for a "Summary:" prefix or just take the last (longest) fragment
+        if (/^summary/i.test(cleaned)) {
+          return cleaned.replace(/^summary:\s*/i, '');
+        }
+      }
+      // If no explicit "Summary:" label, take the last fragment (usually the summary)
+      const last = parts[parts.length - 1]?.trim();
+      if (last && last.length > 20) return last;
+    }
 
-    // Description (truncated)
-    const desc = (job.description || job.summary || '')
-      .replace(/<[^>]+>/g, '')
-      .substring(0, 120);
-    const descDisplay = desc ? escapeHtml(desc) + (desc.length >= 120 ? '...' : '') : '—';
+    return '';
+  }
 
-    html += `
-    <tr class="${appliedClass}" data-job-id="${escapeHtml(job.id)}">
-      <td class="col-rank">${idx + 1}</td>
-      <td class="col-score">
-        <div class="score-bar ${scoreClass}">
-          <span>${score}</span>
-          <div class="score-fill">
-            <div class="score-fill-inner" style="width:${Math.min(100, score)}%"></div>
-          </div>
-        </div>
-      </td>
-      <td class="col-title">
-        <strong>${escapeHtml(job.title)}</strong>
-        <span class="track-badge ${trackClass}">${trackLabel}</span>
-      </td>
-      <td class="col-company">${escapeHtml(job.company)}</td>
-      <td class="col-salary">${salaryDisplay}</td>
-      <td class="col-desc">${descDisplay}</td>
-      <td class="col-posted">${formatDate(job.posted_date || job.found_at)}</td>
-      <td class="col-location">${escapeHtml(job.location || '—')}</td>
-      <td class="col-actions">
-        <div class="action-group">
-          <a href="${escapeHtml(job.url || '#')}" target="_blank" rel="noopener" class="btn-sm btn-apply">Apply</a>
-          <button class="btn-sm btn-generate" onclick="generateMaterials('${escapeHtml(job.id)}', this)"
-            ${isGenerating ? 'disabled' : ''}>
-            ${isGenerating ? '⏳' : hasMaterials ? '📄 View' : 'Generate'}
-          </button>
-        </div>
-      </td>
-      <td class="col-applied">
-        <input type="checkbox" class="applied-check"
-          onchange="toggleApplied('${escapeHtml(job.id)}', this.checked)"
-          ${isApplied ? 'checked' : ''}>
-      </td>
-    </tr>`;
-  });
+  function scoreClass(score) {
+    if (score >= 70) return 'score-high';
+    if (score >= 50) return 'score-mid';
+    return 'score-low';
+  }
 
-  tbody.innerHTML = html;
-}
+  function trackLabel(track) {
+    switch (track) {
+      case 'ev_commercial':   return 'EV';
+      case 'ai_engineering':  return 'AI';
+      default:                return 'OTHER';
+    }
+  }
 
-// ── Stats ────────────────────────────────────────────────────────────────────
-function updateStats() {
-  const total = allJobs.length;
-  const newJobs = allJobs.filter(j => j.status === 'found').length;
-  const ev = allJobs.filter(j => j.track === 'ev_commercial').length;
-  const ai = allJobs.filter(j => j.track === 'ai_engineering').length;
-  const applied = allJobs.filter(j => j.status === 'applied').length;
+  function trackClass(track) {
+    switch (track) {
+      case 'ev_commercial':   return 'ev_commercial';
+      case 'ai_engineering':  return 'ai_engineering';
+      default:                return 'other';
+    }
+  }
 
-  statTotal.textContent = total;
-  statNew.textContent = newJobs;
-  statEv.textContent = ev;
-  statAi.textContent = ai;
-  statApplied.textContent = applied;
-}
+  // ═══════════════════════════════════════════════════════════════
+  // TOAST
+  // ═══════════════════════════════════════════════════════════════
+  function showToast(message, type = 'info', duration = 4000) {
+    const container = $('toast-container');
+    const toast = document.createElement('div');
+    toast.className = 'toast ' + type;
+    toast.textContent = message;
+    container.appendChild(toast);
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      toast.style.transition = 'opacity 0.3s';
+      setTimeout(() => toast.remove(), 300);
+    }, duration);
+  }
 
-function updateLastUpdated() {
-  const now = new Date();
-  lastUpdated.textContent = `Updated: ${now.toLocaleString('en-CA', {
-    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
-  })}`;
-}
+  // ═══════════════════════════════════════════════════════════════
+  // MODAL
+  // ═══════════════════════════════════════════════════════════════
+  function showModal(id) {
+    $(id).style.display = 'flex';
+  }
 
-// ── API: Generate Materials ──────────────────────────────────────────────────
-async function generateMaterials(jobId, btn) {
-  if (generationInProgress.has(jobId)) return;
+  function hideModal(id) {
+    $(id).style.display = 'none';
+  }
 
-  const job = allJobs.find(j => String(j.id) === String(jobId));
-  if (!job) return showToast('Job not found', 'error');
+  function showGenerateModal() {
+    $('modal-title').textContent = 'Generating Materials…';
+    $('modal-status').textContent = 'Calling GLM-5.2 to tailor your resume and cover letter…';
+    $('modal-status').style.display = 'block';
+    document.querySelector('.modal-spinner-wrap').style.display = 'flex';
+    $('modal-result').style.display = 'none';
+    $('modal-error').style.display = 'none';
+    showModal('generate-modal');
+  }
 
-  generationInProgress.add(jobId);
-  btn.disabled = true;
-  btn.textContent = '⏳';
+  function showGenerateResult(materials) {
+    document.querySelector('.modal-spinner-wrap').style.display = 'none';
+    $('modal-status').style.display = 'none';
+    $('modal-title').textContent = 'Materials Ready!';
+    $('link-resume').href = materials.resume;
+    $('link-cover').href = materials.cover_letter;
+    $('modal-result').style.display = 'block';
+  }
 
-  showModal(`Generating resume & cover letter for\n${job.title} @ ${job.company}...`);
+  function showGenerateError(msg) {
+    document.querySelector('.modal-spinner-wrap').style.display = 'none';
+    $('modal-status').style.display = 'none';
+    $('modal-title').textContent = 'Generation Failed';
+    $('modal-error-text').textContent = msg || 'Something went wrong.';
+    $('modal-error').style.display = 'block';
+  }
 
-  try {
-    const res = await fetch(`${CONFIG.apiBase}/generate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ job_id: jobId, title: job.title, company: job.company }),
+  // ═══════════════════════════════════════════════════════════════
+  // DATA LOADING
+  // ═══════════════════════════════════════════════════════════════
+  async function loadJobs() {
+    loadingState.style.display = 'block';
+    emptyState.style.display = 'none';
+    tbody.innerHTML = '';
+    try {
+      // Cache-bust to always get fresh data from the Pi's daily push
+      const res = await fetch('/data/jobs.json?_=' + Date.now());
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+
+      allJobs = (data.jobs || []).map(j => ({
+        ...j,
+        has_materials: j.status === 'materials_ready' || j.has_materials === true
+      }));
+
+      // Update meta display
+      if (data.meta) {
+        $('last-updated').textContent = data.meta.updated || data.meta.generated_at || '—';
+      }
+
+      applyFilters();
+      updateStats();
+      showToast('Loaded ' + allJobs.length + ' jobs', 'success', 2000);
+    } catch (err) {
+      console.error('loadJobs error:', err);
+      showToast('Failed to load jobs: ' + err.message, 'error');
+      emptyState.style.display = 'block';
+      $('empty-text').textContent = 'Could not load job data.';
+      $('empty-hint').textContent = 'Check that data/jobs.json exists and is valid.';
+    } finally {
+      loadingState.style.display = 'none';
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // FILTERING (client-side, no re-fetch)
+  // ═══════════════════════════════════════════════════════════════
+  function applyFilters() {
+    const search = filters.search.toLowerCase().trim();
+
+    filteredJobs = allJobs.filter(job => {
+      // Track filter
+      if (filters.track !== 'all' && job.track !== filters.track) return false;
+
+      // Min score filter
+      if (filters.minScore > 0 && (job.score || 0) < filters.minScore) return false;
+
+      // Status filter
+      if (filters.status !== 'all') {
+        switch (filters.status) {
+          case 'found':
+            if (job.status !== 'found') return false;
+            break;
+          case 'materials_ready':
+            if (job.status !== 'materials_ready') return false;
+            break;
+          case 'applied':
+            if (job.status !== 'applied') return false;
+            break;
+          case 'not_applied':
+            if (job.status === 'applied') return false;
+            break;
+        }
+      }
+
+      // Search filter (title, company, location)
+      if (search) {
+        const haystack = (
+          (job.title || '') + ' ' +
+          (job.company || '') + ' ' +
+          (job.location || '') + ' ' +
+          (getSummary(job) || '')
+        ).toLowerCase();
+        if (!haystack.includes(search)) return false;
+      }
+
+      return true;
     });
 
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(err.substring(0, 200));
-    }
+    // Sort by score descending (rank order)
+    filteredJobs.sort((a, b) => (b.score || 0) - (a.score || 0));
 
-    const result = await res.json();
-    job.status = 'materials_ready';
-
-    hideModal();
-    showToast(`✅ Materials generated for ${job.title}`, 'success');
     renderTable();
-    updateStats();
-  } catch (err) {
-    hideModal();
-    showToast(`❌ Generation failed: ${err.message}`, 'error');
-    console.error('Generate error:', err);
-  } finally {
-    generationInProgress.delete(jobId);
   }
-}
 
-// ── API: Toggle Applied ──────────────────────────────────────────────────────
-async function toggleApplied(jobId, isApplied) {
-  const job = allJobs.find(j => String(j.id) === String(jobId));
-  if (!job) return;
+  // ═══════════════════════════════════════════════════════════════
+  // RENDERING
+  // ═══════════════════════════════════════════════════════════════
+  function renderTable() {
+    if (filteredJobs.length === 0) {
+      tbody.innerHTML = '';
+      emptyState.style.display = 'block';
+      $('empty-text').textContent = 'No jobs match the current filters.';
+      $('empty-hint').textContent = 'Try adjusting filters or refresh to load new postings.';
+      return;
+    }
 
-  // Optimistic update
-  job.status = isApplied ? 'applied' : 'found';
+    emptyState.style.display = 'none';
 
-  try {
-    const res = await fetch(`${CONFIG.apiBase}/applied`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ job_id: jobId, applied: isApplied }),
+    tbody.innerHTML = filteredJobs.map((job, idx) => {
+      const rank = idx + 1;
+      const score = job.score || 0;
+      const sc = scoreClass(score);
+      const salary = formatSalary(job.salary);
+      const posted = getPostedDate(job);
+      const summary = getSummary(job);
+      const applied = job.status === 'applied';
+      const hasMaterials = job.has_materials;
+
+      // Action buttons
+      const generateBtn = hasMaterials
+        ? `<button class="btn btn-sm btn-view" onclick="viewMaterials(${job.id})">👁 View</button>`
+        : `<button class="btn btn-sm btn-generate" onclick="generateMaterials(${job.id}, this)">✨ Generate</button>`;
+
+      const applyLink = job.url
+        ? `<a href="${escapeHtml(job.url)}" target="_blank" rel="noopener" class="btn btn-sm btn-outline">↗ Apply</a>`
+        : `<span class="btn btn-sm btn-disabled btn-outline">No link</span>`;
+
+      return `
+        <tr>
+          <td class="rank-cell">${rank}</td>
+          <td>
+            <div class="score-cell">
+              <div class="score-bar-wrap">
+                <div class="score-bar ${sc}" style="width:${Math.min(score, 100)}%"></div>
+              </div>
+              <span class="score-value ${sc}">${score}</span>
+            </div>
+          </td>
+          <td>
+            <div class="title-cell">
+              <a href="${escapeHtml(job.url || '#')}" target="_blank" rel="noopener" class="title-text">${escapeHtml(job.title || 'Untitled')}</a>
+              <span class="track-badge ${trackClass(job.track)}">${trackLabel(job.track)}</span>
+            </div>
+          </td>
+          <td class="company-cell">${escapeHtml(job.company || '—')}</td>
+          <td>
+            <span class="salary-cell ${salary ? '' : 'salary-na'}">${escapeHtml(salary || 'N/A')}</span>
+          </td>
+          <td><div class="summary-cell">${escapeHtml(summary)}</div></td>
+          <td class="posted-cell">${escapeHtml(formatDate(posted))}</td>
+          <td class="location-cell">${escapeHtml(job.location || '—')}</td>
+          <td>
+            <div class="actions-cell">
+              ${applyLink}
+              ${generateBtn}
+            </div>
+          </td>
+          <td class="applied-cell">
+            <input type="checkbox" class="applied-check" ${applied ? 'checked' : ''}
+              onchange="toggleApplied(${job.id}, this.checked, this)"
+              title="Mark as applied" />
+          </td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // STATS
+  // ═══════════════════════════════════════════════════════════════
+  function updateStats() {
+    const now = new Date();
+    const cutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+    let total = allJobs.length;
+    let newCount = 0;
+    let evCount = 0;
+    let aiCount = 0;
+    let appliedCount = 0;
+    let materialsCount = 0;
+
+    for (const job of allJobs) {
+      // New within 24h (based on found_at)
+      if (job.found_at) {
+        let iso = job.found_at;
+        if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(iso)) {
+          iso = iso.replace(' ', 'T') + 'Z';
+        }
+        const d = new Date(iso);
+        if (!isNaN(d.getTime()) && d > cutoff) newCount++;
+      }
+
+      if (job.track === 'ev_commercial') evCount++;
+      if (job.track === 'ai_engineering') aiCount++;
+      if (job.status === 'applied') appliedCount++;
+      if (job.status === 'materials_ready') materialsCount++;
+    }
+
+    $('stat-total').textContent = total;
+    $('stat-new').textContent = newCount;
+    $('stat-ev').textContent = evCount;
+    $('stat-ai').textContent = aiCount;
+    $('stat-applied').textContent = appliedCount;
+    $('stat-materials').textContent = materialsCount;
+    $('job-count-badge').textContent = total + (total === 1 ? ' job' : ' jobs');
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // API ACTIONS
+  // ═══════════════════════════════════════════════════════════════
+
+  /**
+   * POST /api/generate — generate resume + cover letter via GLM-5.2.
+   */
+  async function generateMaterials(jobId, btn) {
+    if (!getToken()) {
+      showToast('Please set your auth token first (🔑 Token button).', 'error');
+      showModal('token-modal');
+      return;
+    }
+
+    // Find the job in our local data for convenience fields
+    const job = allJobs.find(j => j.id === jobId);
+    if (!job) {
+      showToast('Job not found in local data.', 'error');
+      return;
+    }
+
+    // Disable button during generation
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = '⏳ Working…';
+    }
+
+    showGenerateModal();
+
+    try {
+      const res = await fetch('/api/generate', {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({
+          job_id: jobId,
+          title: job.title,
+          company: job.company
+        })
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Generation failed (HTTP ' + res.status + ')');
+      }
+
+      showGenerateResult(data.materials);
+
+      // Update local state
+      job.status = 'materials_ready';
+      job.has_materials = true;
+      renderTable();
+
+      showToast('Materials generated for ' + job.company, 'success');
+    } catch (err) {
+      console.error('generateMaterials error:', err);
+      showGenerateError(err.message);
+      showToast('Generation failed: ' + err.message, 'error');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = '✨ Generate';
+      }
+    }
+  }
+
+  /**
+   * POST /api/applied — toggle applied status.
+   */
+  async function toggleApplied(jobId, checked, checkbox) {
+    if (!getToken()) {
+      showToast('Please set your auth token first (🔑 Token button).', 'error');
+      if (checkbox) checkbox.checked = !checked; // rollback
+      showModal('token-modal');
+      return;
+    }
+
+    const job = allJobs.find(j => j.id === jobId);
+    if (!job) return;
+
+    const prevStatus = job.status;
+    // Optimistic UI update
+    job.status = checked ? 'applied' : 'found';
+
+    try {
+      const res = await fetch('/api/applied', {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({
+          job_id: jobId,
+          applied: checked
+        })
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Status update failed (HTTP ' + res.status + ')');
+      }
+
+      // Update local state with server response
+      job.status = data.status || job.status;
+      updateStats();
+      showToast(
+        checked ? 'Marked as applied ✓' : 'Marked as not applied',
+        'success',
+        2000
+      );
+    } catch (err) {
+      console.error('toggleApplied error:', err);
+      // Rollback
+      job.status = prevStatus;
+      if (checkbox) checkbox.checked = !checked;
+      renderTable();
+      updateStats();
+      showToast('Failed to update: ' + err.message, 'error');
+    }
+  }
+
+  /**
+   * Open materials in new tabs (resume + cover letter).
+   * The /api/materials route is public (no auth header needed) so
+   * direct browser navigation works.
+   */
+  function viewMaterials(jobId) {
+    const resumeUrl = '/api/materials/' + jobId + '/resume.md';
+    const coverUrl = '/api/materials/' + jobId + '/cover_letter.md';
+    window.open(resumeUrl, '_blank');
+    window.open(coverUrl, '_blank');
+    showToast('Opening materials in new tabs…', 'info', 2000);
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // EVENT LISTENERS
+  // ═══════════════════════════════════════════════════════════════
+  function initEventListeners() {
+    // Track segmented control
+    $('track-filter').addEventListener('click', (e) => {
+      const btn = e.target.closest('.seg-btn');
+      if (!btn) return;
+      document.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      filters.track = btn.dataset.track;
+      applyFilters();
     });
 
-    if (!res.ok) {
-      // Rollback
-      job.status = isApplied ? 'found' : 'applied';
-      showToast('Failed to update status', 'error');
-    } else {
-      const label = isApplied ? 'marked as applied' : 'unmarked';
-      showToast(`${job.title} ${label}`, 'success');
-    }
-  } catch (err) {
-    job.status = isApplied ? 'found' : 'applied';
-    showToast(`Error: ${err.message}`, 'error');
+    // Min score slider
+    $('min-score').addEventListener('input', (e) => {
+      filters.minScore = parseInt(e.target.value, 10);
+      $('min-score-val').textContent = filters.minScore;
+      applyFilters();
+    });
+
+    // Status dropdown
+    $('status-filter').addEventListener('change', (e) => {
+      filters.status = e.target.value;
+      applyFilters();
+    });
+
+    // Search box (debounced)
+    let searchTimer;
+    $('search-box').addEventListener('input', (e) => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => {
+        filters.search = e.target.value;
+        applyFilters();
+      }, 200);
+    });
+
+    // Clear filters
+    $('btn-clear-filters').addEventListener('click', () => {
+      filters.track = 'all';
+      filters.minScore = 0;
+      filters.status = 'all';
+      filters.search = '';
+
+      document.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
+      document.querySelector('.seg-btn[data-track="all"]').classList.add('active');
+      $('min-score').value = 0;
+      $('min-score-val').textContent = '0';
+      $('status-filter').value = 'all';
+      $('search-box').value = '';
+
+      applyFilters();
+      showToast('Filters cleared', 'info', 1500);
+    });
+
+    // Refresh button
+    $('btn-refresh').addEventListener('click', loadJobs);
+
+    // Generate modal close
+    $('modal-close').addEventListener('click', () => hideModal('generate-modal'));
+    $('generate-modal').addEventListener('click', (e) => {
+      if (e.target === $('generate-modal')) hideModal('generate-modal');
+    });
+
+    // Token modal
+    $('btn-token').addEventListener('click', () => {
+      $('token-input').value = getToken();
+      showModal('token-modal');
+    });
+    $('token-modal-close').addEventListener('click', () => hideModal('token-modal'));
+    $('token-modal').addEventListener('click', (e) => {
+      if (e.target === $('token-modal')) hideModal('token-modal');
+    });
+    $('token-save').addEventListener('click', () => {
+      const val = $('token-input').value.trim();
+      if (val) {
+        setToken(val);
+        hideModal('token-modal');
+        showToast('Auth token saved ✓', 'success');
+      } else {
+        showToast('Token cannot be empty', 'error');
+      }
+    });
+    $('token-clear').addEventListener('click', () => {
+      clearToken();
+      $('token-input').value = '';
+      showToast('Auth token cleared', 'info');
+    });
+
+    // Escape key closes modals
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        hideModal('generate-modal');
+        hideModal('token-modal');
+      }
+    });
   }
 
-  renderTable();
-  updateStats();
-}
+  // ═══════════════════════════════════════════════════════════════
+  // EXPOSE GLOBALS (for inline onclick handlers)
+  // ═══════════════════════════════════════════════════════════════
+  window.generateMaterials = generateMaterials;
+  window.toggleApplied = toggleApplied;
+  window.viewMaterials = viewMaterials;
 
-// ── Event Listeners ──────────────────────────────────────────────────────────
-filterTrack.addEventListener('change', applyFilters);
-filterMinScore.addEventListener('change', applyFilters);
-filterStatus.addEventListener('change', applyFilters);
-filterSearch.addEventListener('input', applyFilters);
-btnRefresh.addEventListener('click', loadJobs);
-$('#modal-close').addEventListener('click', hideModal);
-$('#modal-close-btn').addEventListener('click', hideModal);
-
-// Close modal on backdrop click
-modal.addEventListener('click', (e) => {
-  if (e.target === modal) hideModal();
-});
-
-// ── Load on boot ─────────────────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', loadJobs);
+  // ═══════════════════════════════════════════════════════════════
+  // INIT
+  // ═══════════════════════════════════════════════════════════════
+  document.addEventListener('DOMContentLoaded', () => {
+    initEventListeners();
+    loadJobs();
+  });
+})();

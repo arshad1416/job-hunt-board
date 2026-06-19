@@ -1,3 +1,13 @@
 {
+  "meta": {
+    "updated": "2026-06-19",
+    "count": 0,
+    "generated_at": "2026-06-19T00:00:00Z",
+    "tracks": {
+      "ev_commercial": 0,
+      "ai_engineering": 0,
+      "other": 0
+    }
+  },
   "jobs": []
 }
