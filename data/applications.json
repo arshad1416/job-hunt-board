@@ -1,0 +1,80 @@
+{
+  "meta": {
+    "updated": "2026-06-25",
+    "total": 2,
+    "applied": 2,
+    "pipeline": 5
+  },
+  "applications": [
+    {
+      "id": "byd-commercial-director",
+      "company": "BYD (Ontario, Canada)",
+      "role": "Commercial Director",
+      "applied_date": "2026-06-18",
+      "via": "LinkedIn",
+      "hiring_manager": "Annie Li",
+      "status": "applied",
+      "outreach": "sent",
+      "outreach_date": "2026-06-25",
+      "outreach_method": "LinkedIn Connect Note",
+      "next_action": "Await response — Step 2 InMail if accepted",
+      "notes": "One app per cycle with Annie Li. Wait 2 weeks before applying to other BYD roles."
+    },
+    {
+      "id": "geely-head-of-sales",
+      "company": "Geely / Zeekr (Ontario, Canada)",
+      "role": "Head of Sales (Canada)",
+      "applied_date": "2026-06-19",
+      "via": "LinkedIn",
+      "hiring_manager": "Yiheng Zhou",
+      "status": "applied",
+      "outreach": "sent",
+      "outreach_date": "2026-06-25",
+      "outreach_method": "LinkedIn Connect Note",
+      "next_action": "Await response — Step 2 InMail if accepted",
+      "notes": "Geely's 5-year min requirement easier than BYD's 10-year. Wait 2 weeks before other Geely apps."
+    }
+  ],
+  "pipeline": [
+    {
+      "company": "BYD (Ontario, Canada)",
+      "role": "Auto Finance Manager",
+      "hiring_manager": "Annie Li",
+      "status": "waiting",
+      "wait_until": "Jul 2 or Commercial Director resolves",
+      "cover_letter": "Ready"
+    },
+    {
+      "company": "BYD (Ontario, Canada)",
+      "role": "Sales Manager",
+      "hiring_manager": "Annie Li",
+      "status": "waiting",
+      "wait_until": "Jul 2 or Commercial Director resolves",
+      "cover_letter": "Ready"
+    },
+    {
+      "company": "BYD (Ontario, Canada)",
+      "role": "Network Development Manager",
+      "hiring_manager": "Annie Li",
+      "status": "waiting",
+      "wait_until": "Jul 2 or Commercial Director resolves",
+      "cover_letter": "Ready"
+    },
+    {
+      "company": "Geely / Zeekr (Ontario, Canada)",
+      "role": "Head of Network Development",
+      "hiring_manager": "Yiheng Zhou",
+      "status": "waiting",
+      "wait_until": "Jul 3 or Head of Sales resolves",
+      "cover_letter": "Ready"
+    },
+    {
+      "company": "Geely / Zeekr (Ontario, Canada)",
+      "role": "Head of Product",
+      "hiring_manager": "Yiheng Zhou",
+      "status": "waiting",
+      "wait_until": "Jul 3 or Head of Sales resolves",
+      "cover_letter": "Ready"
+    }
+  ]
+}

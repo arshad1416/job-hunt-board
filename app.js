@@ -541,6 +541,87 @@
   }
 
   // ═══════════════════════════════════════════════════════════════
+  // APPLICATIONS TRACKER
+  // ═══════════════════════════════════════════════════════════════
+
+  let appData = { applications: [], pipeline: [] };
+  let appsVisible = true;
+
+  async function loadApplications() {
+    $('#apps-loading').style.display = 'block';
+    $('#apps-table').style.display = 'none';
+    $('#pipeline-table').style.display = 'none';
+    $('#apps-empty').style.display = 'none';
+    try {
+      const res = await fetch('/data/applications.json?_=' + Date.now());
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      appData = await res.json();
+      renderApplications();
+    } catch (err) {
+      console.error('loadApplications error:', err);
+      $('#apps-loading').textContent = 'Could not load application tracker.';
+    } finally {
+      $('#apps-loading').style.display = 'none';
+    }
+  }
+
+  function renderApplications() {
+    const apps = appData.applications || [];
+    const pipeline = appData.pipeline || [];
+    const appsTbody = $('#apps-tbody');
+    const pipelineTbody = $('#pipeline-tbody');
+
+    // Update badge
+    const meta = appData.meta || {};
+    $('#applied-count-badge').textContent = meta.applied + ' applied / ' + meta.pipeline + ' waiting';
+
+    // Render applied applications
+    if (apps.length > 0) {
+      appsTbody.innerHTML = apps.map(a => {
+        const outreachClass = a.outreach === 'sent' ? 'outreach-sent' : 'outreach-pending';
+        const outreachLabel = a.outreach === 'sent' ? '✅ Sent (' + a.outreach_date + ')' : '⏳ Pending';
+        return `
+          <tr>
+            <td data-label="Company"><strong>${escapeHtml(a.company)}</strong></td>
+            <td data-label="Role">${escapeHtml(a.role)}</td>
+            <td data-label="Applied" class="apps-date">${escapeHtml(a.applied_date)}</td>
+            <td data-label="Manager"><span class="manager-badge">${escapeHtml(a.hiring_manager)}</span></td>
+            <td data-label="Outreach"><span class="outreach-status ${outreachClass}">${outreachLabel}</span></td>
+            <td data-label="Next Step" class="apps-next">${escapeHtml(a.next_action)}</td>
+            <td data-label="Notes" class="apps-notes-cell">${escapeHtml(a.notes)}</td>
+          </tr>
+        `;
+      }).join('');
+      $('#apps-table').style.display = '';
+    }
+
+    // Render pipeline
+    if (pipeline.length > 0) {
+      pipelineTbody.innerHTML = pipeline.map(p => {
+        const clStatus = p.cover_letter === 'Ready' ? 'cl-ready' : 'cl-pending';
+        return `
+          <tr>
+            <td data-label="Company"><strong>${escapeHtml(p.company)}</strong></td>
+            <td data-label="Role">${escapeHtml(p.role)}</td>
+            <td data-label="Manager"><span class="manager-badge">${escapeHtml(p.hiring_manager)}</span></td>
+            <td data-label="Wait Until" class="apps-next">${escapeHtml(p.wait_until)}</td>
+            <td data-label="Cover Letter"><span class="cl-status ${clStatus}">${escapeHtml(p.cover_letter)}</span></td>
+          </tr>
+        `;
+      }).join('');
+      $('#pipeline-table').style.display = '';
+    }
+
+    // Show empty state if nothing
+    if (apps.length === 0 && pipeline.length === 0) {
+      $('#apps-empty').style.display = 'block';
+    }
+
+    // Apply visibility
+    $('#apps-body').style.display = appsVisible ? 'block' : 'none';
+  }
+
+  // ═══════════════════════════════════════════════════════════════
   // EVENT LISTENERS
   // ═══════════════════════════════════════════════════════════════
   function initEventListeners() {
@@ -636,6 +717,13 @@
         hideModal('token-modal');
       }
     });
+
+    // Applications toggle
+    $('btn-toggle-apps').addEventListener('click', () => {
+      appsVisible = !appsVisible;
+      $('#apps-body').style.display = appsVisible ? 'block' : 'none';
+      $('btn-toggle-apps').textContent = appsVisible ? 'Hide' : 'Show';
+    });
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -651,5 +739,6 @@
   document.addEventListener('DOMContentLoaded', () => {
     initEventListeners();
     loadJobs();
+    loadApplications();
   });
 })();

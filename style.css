@@ -369,3 +369,206 @@ select { cursor: pointer; }
     scroll-behavior: auto !important;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   APPLICATIONS TRACKER
+   ═══════════════════════════════════════════════════════════════ */
+.apps-section {
+  margin: 16px 20px 40px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.apps-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+.apps-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  flex: 1;
+}
+.badge-applied {
+  background: var(--score-high);
+  color: #fff;
+  font-size: 0.68rem;
+  padding: 3px 10px;
+}
+.apps-body {
+  padding: 12px 16px;
+}
+.apps-subtitle {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin: 16px 0 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-light);
+}
+.apps-loading,
+.apps-empty {
+  text-align: center;
+  padding: 20px;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+/* ── App Tracker Table ── */
+.apps-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+.apps-table thead th {
+  border-bottom: 2px solid var(--border);
+  padding: 7px 10px;
+  text-align: left;
+  font-weight: 700;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.apps-table tbody tr {
+  border-bottom: 1px solid var(--border-light);
+  transition: background 0.1s;
+}
+.apps-table tbody tr:hover {
+  background: var(--bg-hover);
+}
+.apps-table td {
+  padding: 7px 10px;
+  vertical-align: top;
+}
+.col-apps-company { min-width: 130px; }
+.col-apps-role    { min-width: 150px; }
+.col-apps-date    { width: 85px; }
+.col-apps-manager { width: 120px; }
+.col-apps-outreach { width: 140px; }
+.col-apps-next    { min-width: 150px; }
+.col-apps-notes   { min-width: 180px; }
+
+.apps-date {
+  font-family: var(--mono-stack);
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* Manager badge */
+.manager-badge {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: var(--radius-xs);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--accent);
+  font-size: 0.76rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Outreach status */
+.outreach-status {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: var(--radius-xs);
+  font-size: 0.74rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.outreach-sent {
+  background: rgba(63, 185, 80, 0.12);
+  color: var(--score-high);
+  border: 1px solid rgba(63, 185, 80, 0.25);
+}
+.outreach-pending {
+  background: rgba(210, 153, 34, 0.12);
+  color: var(--score-mid);
+  border: 1px solid rgba(210, 153, 34, 0.25);
+}
+
+/* Cover letter status */
+.cl-status {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: var(--radius-xs);
+  font-size: 0.74rem;
+  font-weight: 600;
+}
+.cl-ready {
+  background: rgba(63, 185, 80, 0.12);
+  color: var(--score-high);
+  border: 1px solid rgba(63, 185, 80, 0.25);
+}
+.cl-pending {
+  background: rgba(210, 153, 34, 0.12);
+  color: var(--score-mid);
+  border: 1px solid rgba(210, 153, 34, 0.25);
+}
+
+/* Next step / notes */
+.apps-next {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+.apps-notes-cell {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  max-width: 240px;
+}
+
+/* Mobile: collapse to cards */
+@media (max-width: 767px) {
+  .apps-section {
+    margin: 12px 10px 24px;
+  }
+  .apps-header {
+    padding: 10px 12px;
+  }
+  .apps-title {
+    font-size: 0.85rem;
+  }
+  .apps-body {
+    padding: 8px 10px;
+  }
+  .apps-table thead {
+    display: none;
+  }
+  .apps-table,
+  .apps-table tbody,
+  .apps-table tr,
+  .apps-table td {
+    display: block;
+  }
+  .apps-table tbody tr {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    padding: 10px;
+    margin-bottom: 6px;
+  }
+  .apps-table td {
+    padding: 2px 0;
+    border: none;
+  }
+  .apps-table td:empty {
+    display: none;
+  }
+  /* Label each cell inline */
+  .apps-table td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    color: var(--text-muted);
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    display: block;
+    margin-bottom: 1px;
+  }
+}

@@ -124,6 +124,51 @@
     </div>
   </main>
 
+  <!-- ════════════════ APPLICATIONS TRACKER ════════════════ -->
+  <section class="apps-section" id="apps-section">
+    <div class="apps-header">
+      <h2 class="apps-title">📋 Application Tracker</h2>
+      <span class="badge badge-applied" id="applied-count-badge">0 applied</span>
+      <button class="btn btn-sm btn-ghost" id="btn-toggle-apps">Toggle</button>
+    </div>
+    <div class="apps-body" id="apps-body">
+      <!-- Loading state -->
+      <div class="apps-loading" id="apps-loading">Loading applications…</div>
+      <!-- Applied table -->
+      <table class="apps-table" id="apps-table" style="display:none;">
+        <thead>
+          <tr>
+            <th class="col-apps-company">Company</th>
+            <th class="col-apps-role">Role</th>
+            <th class="col-apps-date">Applied</th>
+            <th class="col-apps-manager">Hiring Manager</th>
+            <th class="col-apps-outreach">Outreach</th>
+            <th class="col-apps-next">Next Step</th>
+            <th class="col-apps-notes">Notes</th>
+          </tr>
+        </thead>
+        <tbody id="apps-tbody"></tbody>
+      </table>
+      <!-- Pipeline -->
+      <h3 class="apps-subtitle">🔄 Pipeline (Waiting)</h3>
+      <table class="apps-table" id="pipeline-table" style="display:none;">
+        <thead>
+          <tr>
+            <th class="col-apps-company">Company</th>
+            <th class="col-apps-role">Role</th>
+            <th class="col-apps-manager">Hiring Manager</th>
+            <th class="col-apps-next">Wait Until</th>
+            <th class="col-apps-notes">Cover Letter</th>
+          </tr>
+        </thead>
+        <tbody id="pipeline-tbody"></tbody>
+      </table>
+      <div class="apps-empty" id="apps-empty" style="display:none;">
+        <p>No manually tracked applications yet.</p>
+      </div>
+    </div>
+  </section>
+
   <!-- ════════════════ GENERATE MODAL ════════════════ -->
   <div class="modal-overlay" id="generate-modal" style="display:none;">
     <div class="modal">
