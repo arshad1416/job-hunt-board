@@ -138,7 +138,7 @@ select { cursor: pointer; }
 .col-title    { min-width: 170px; }
 .col-company  { min-width: 120px; }
 .col-salary   { width: 115px; }
-.col-summary  { min-width: 170px; max-width: 280px; }
+.col-asking  { width: 110px; }
 .col-posted   { width: 70px; }
 .col-location { width: 120px; }
 .col-actions  { width: 135px; }
@@ -161,7 +161,7 @@ select { cursor: pointer; }
 .company-cell { font-weight: 500; color: var(--text-primary); }
 .salary-cell { font-family: var(--mono-stack); font-size: 0.78rem; color: var(--score-high); white-space: nowrap; }
 .salary-cell.salary-na { color: var(--text-muted); }
-.summary-cell { color: var(--text-secondary); font-size: 0.76rem; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.asking-cell { font-family: var(--mono-stack); font-size: 0.85rem; color: var(--accent); text-align: right; white-space: nowrap; }
 .posted-cell { font-size: 0.76rem; color: var(--text-secondary); white-space: nowrap; }
 .location-cell { font-size: 0.76rem; color: var(--text-secondary); }
 .actions-cell { display: flex; flex-wrap: wrap; gap: 4px; }
@@ -209,7 +209,7 @@ select { cursor: pointer; }
    TABLET — 768px–1023px: condense columns
    ═══════════════════════════════════════════════════════════════ */
 @media (max-width: 1023px) {
-  .col-summary  { display: none; }
+  .col-asking  { display: none; }
   .col-location { display: none; }
   thead th:nth-child(6), thead th:nth-child(8),
   tbody td:nth-child(6), tbody td:nth-child(8) { display: none; }
@@ -342,7 +342,7 @@ select { cursor: pointer; }
   }
   .applied-check { width: 18px; height: 18px; }
 
-  /* Hide summary */
+  /* Hide asking */
   .jobs-table td:nth-child(6) { display: none; }
 }
 

@@ -105,6 +105,13 @@
     return salary;
   }
 
+  function formatAsking(ask) {
+    if (ask == null) return null;
+    const num = Number(ask);
+    if (isNaN(num)) return null;
+    return '$' + num.toLocaleString('en-CA');
+  }
+
   /**
    * Derive the "posted" date for a job.
    * The Turso applications table does NOT have a posted_at column,
@@ -112,33 +119,6 @@
    */
   function getPostedDate(job) {
     return job.posted_date || job.posted_at || job.found_at || '';
-  }
-
-  /**
-   * Derive the summary text for a job.
-   * The Turso applications table does NOT have a description column,
-   * so we fall back to parsing the notes field (salary est | ask | summary).
-   */
-  function getSummary(job) {
-    if (job.summary && job.summary.trim()) return job.summary;
-
-    // Fall back to notes field — the Pi stores pipe-delimited fragments:
-    // "Salary Est: $120K-$150K | Suggested Ask: $157K | Summary: <text>"
-    if (job.notes) {
-      const parts = job.notes.split('|');
-      for (const part of parts) {
-        const cleaned = part.trim();
-        // Look for a "Summary:" prefix or just take the last (longest) fragment
-        if (/^summary/i.test(cleaned)) {
-          return cleaned.replace(/^summary:\s*/i, '');
-        }
-      }
-      // If no explicit "Summary:" label, take the last fragment (usually the summary)
-      const last = parts[parts.length - 1]?.trim();
-      if (last && last.length > 20) return last;
-    }
-
-    return '';
   }
 
   function scoreClass(score) {
@@ -294,7 +274,7 @@
           (job.title || '') + ' ' +
           (job.company || '') + ' ' +
           (job.location || '') + ' ' +
-          (getSummary(job) || '')
+          (formatAsking(job.suggested_ask) || '')
         ).toLowerCase();
         if (!haystack.includes(search)) return false;
       }
@@ -328,7 +308,7 @@
       const sc = scoreClass(score);
       const salary = formatSalary(job.salary);
       const posted = getPostedDate(job);
-      const summary = getSummary(job);
+      const asking = formatAsking(job.suggested_ask);
       const applied = job.status === 'applied';
       const hasMaterials = job.has_materials;
 
@@ -367,7 +347,7 @@
           <td>
             <span class="salary-cell ${salary ? '' : 'salary-na'}">${escapeHtml(salary || 'N/A')}</span>
           </td>
-          <td><div class="summary-cell">${escapeHtml(summary)}</div></td>
+          <td><div class="asking-cell">${asking ? escapeHtml(asking) : '—'}</div></td>
           <td class="posted-cell">${escapeHtml(formatDate(posted))}</td>
           <td class="location-cell">${escapeHtml(job.location || '—')}</td>
           <td>
