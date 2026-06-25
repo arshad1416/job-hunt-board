@@ -352,7 +352,7 @@
           <td>
             <div class="score-cell">
               <div class="score-bar-wrap">
-                <div class="score-bar ${sc}" style="width:${Math.min(score, 100)}%"></div>
+                <div class="score-bar ${sc}" style="transform:scaleX(${Math.min(score, 100) / 100})"></div>
               </div>
               <span class="score-value ${sc}">${score}</span>
             </div>
