@@ -134,7 +134,7 @@ def git_push(repo_path: Path, message: str) -> bool:
                        capture_output=True, timeout=30, check=True)
         subprocess.run(["git", "-C", str(repo_path), "commit", "-m", message],
                        capture_output=True, timeout=30)
-        result = subprocess.run(["git", "-C", str(repo_path), "push"],
+        result = subprocess.run(["git", "-C", str(repo_path), "push", "origin", "HEAD:master"],
                                 capture_output=True, timeout=60)
         if result.returncode == 0:
             print(f"[sync] Git push successful")
