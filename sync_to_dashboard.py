@@ -128,20 +128,32 @@ def transform_job(row: dict) -> dict:
 
 # ── Git operations ───────────────────────────────────────────────────────────
 def git_push(repo_path: Path, message: str) -> bool:
-    """Commit and push changes to GitHub."""
+    """Pull rebase, commit, then push to main AND master."""
     try:
+        # Pull --rebase first to avoid divergence (Mac may have pushed changes)
+        pull = subprocess.run(
+            ["git", "-C", str(repo_path), "pull", "--rebase", "origin", "main"],
+            capture_output=True, timeout=60,
+        )
+        if pull.returncode != 0:
+            print(f"[sync] Git pull --rebase output: {pull.stdout[:200]}")
+            print(f"[sync] Git pull --rebase errors: {pull.stderr[:200]}")
+            print("[sync] Continuing despite pull issue...")
+
         subprocess.run(["git", "-C", str(repo_path), "add", "-A"],
                        capture_output=True, timeout=30, check=True)
         subprocess.run(["git", "-C", str(repo_path), "commit", "-m", message],
                        capture_output=True, timeout=30)
-        result = subprocess.run(["git", "-C", str(repo_path), "push", "origin", "HEAD:master"],
-                                capture_output=True, timeout=60)
-        if result.returncode == 0:
-            print(f"[sync] Git push successful")
+        r1 = subprocess.run(["git", "-C", str(repo_path), "push", "origin", "main"],
+                            capture_output=True, timeout=60)
+        r2 = subprocess.run(["git", "-C", str(repo_path), "push", "origin", "main:master"],
+                            capture_output=True, timeout=60)
+        if r1.returncode == 0 or r2.returncode == 0:
+            print(f"[sync] Git push to main + master successful")
             return True
         else:
-            print(f"[sync] Git push output: {result.stdout[:200]}")
-            print(f"[sync] Git push errors: {result.stderr[:200]}")
+            print(f"[sync] Git push output: {r2.stdout[:200]}")
+            print(f"[sync] Git push errors: {r2.stderr[:200]}")
             return False
     except subprocess.TimeoutExpired:
         print("[sync] Git push timed out", file=sys.stderr)
