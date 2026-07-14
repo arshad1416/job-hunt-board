@@ -1,0 +1,20 @@
+{
+  "fetched_at": "2026-07-13T19:19:50.122385+00:00",
+  "source": "upwork",
+  "data": {
+    "fetched_at": "2026-07-13T19:19:50.062288+00:00",
+    "total_searches": 8,
+    "new_jobs": 0,
+    "total_jobs_found": 0,
+    "results": {
+      "Python": [],
+      "AI/ML": [],
+      "ML": [],
+      "LLM": [],
+      "Scraping": [],
+      "EV/Automotive": [],
+      "Data Engineering": [],
+      "Automation": []
+    }
+  }
+}
