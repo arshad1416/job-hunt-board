@@ -328,6 +328,57 @@ description and §3 needs another look.
 
 ---
 
+## 7a. Verify Phase 1 on the preview deployment (before merging)
+
+Cloudflare builds a preview for this branch. Worth checking against the
+real Worker before it reaches production — my own verification ran the
+middleware under Node, and this environment's network policy blocks
+`pages.dev`, so I could not hit the deployed copy myself.
+
+```bash
+P=https://claude-job-hunt-security-pip.job-hunt-board.pages.dev
+
+# The vulnerability: every one of these must be 401
+for id in 1 2 41 500 6595; do
+  printf "job_id=%-5s -> %s\n" "$id" \
+    "$(curl -s -o /dev/null -w '%{http_code}' "$P/api/materials/$id/resume.md")"
+done
+
+# ...and must return no resume text
+curl -s "$P/api/materials/41/resume.md"
+
+# Health stays public: 200
+curl -s -o /dev/null -w '%{http_code}\n' "$P/api/health"
+
+# Mutations without a token: 401
+for ep in generate applied material-links; do
+  printf "%-15s -> %s\n" "$ep" \
+    "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$P/api/$ep" \
+        -H 'Content-Type: application/json' -d '{"job_id":41}')"
+done
+
+# CORS pinned: no access-control-allow-origin in these headers
+curl -s -D - -o /dev/null -H 'Origin: https://evil.example.com' \
+  "$P/api/health" | grep -i access-control-allow-origin
+```
+
+Expected: five `401`s, an empty body, `200` for health, three `401`s for
+the mutations, and **no output at all** from the final `grep`.
+
+Then the end-to-end path, in a browser on the preview URL: set your token
+via 🔑 Token, generate materials for one job, and click View. Both tabs
+should open. If they open blank or 401, the signed-link round trip is
+broken — tell me and I will fix it before this merges.
+
+> Preview deployments get their own hostname
+> (`claude-job-hunt-security-pip.job-hunt-board.pages.dev`), which is **not**
+> in the CORS allow-list. That is fine and expected: the dashboard calls its
+> own origin, and same-origin requests send no `Origin` header, so CORS never
+> applies. Only add a preview host to `ALLOWED_ORIGINS` if you need to call
+> the API cross-origin from somewhere else.
+
+---
+
 ## 8. Rollback
 
 | Step | Undo |
