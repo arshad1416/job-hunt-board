@@ -273,6 +273,7 @@ Zero-dependency Node 18+ (global `fetch`), run from the Pi. **All are dry-run by
 | `scripts/add-description-column.mjs` | Applies the additive `description` migration. Idempotent — checks `PRAGMA table_info` first and re-counts rows after. |
 | `scripts/check-liveness.mjs` | Marks dead postings `expired`. Three-way verdict; **`uncertain` is never written**, so an anti-bot wall can't cost you a live posting. Sequential with a jittered 5–10s per-host delay. |
 | `scripts/backfill-descriptions.mjs` | Best-effort repair of rows predating the column. Secondary to capturing descriptions at scrape time. |
+| `scripts/verify-goal.mjs` | **Read-only.** Checks all seven success criteria against live Turso and the live site; exits non-zero until every one holds. |
 
 ```bash
 export TURSO_URL=... TURSO_TOKEN=...

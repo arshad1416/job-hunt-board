@@ -289,7 +289,32 @@ turso db shell morning-briefing \
 
 ---
 
-## 7. Verify the 9AM ET cron
+## 7. Verify — all seven criteria, one command
+
+```bash
+cd ~/job-hunt-board
+export TURSO_URL=... TURSO_TOKEN=...
+node scripts/verify-goal.mjs
+```
+
+Read-only — SELECTs and GETs, never writes. It checks every success
+criterion against live Turso and the live site and prints a pass/fail line
+for each, exiting non-zero until all seven hold:
+
+1. materials not served to unauthenticated enumeration (5 job_ids, expects `401`)
+2. CORS pinned — unknown origin gets no `ACAO`, own origin still allowed
+3. `applications.description` exists **and** has rows from the last 2 days
+   (so a backfill alone doesn't pass it off as a real scrape)
+4. `data/jobs.json` rows have a non-empty summary
+5. `generate.js` interpolates the JD into both prompts
+6. rows have actually moved to `expired`
+7. `jobs.json` is fresh and `/api/health` reports `configured`
+
+Run it after each runbook section to see the count climb. Run from a
+machine that can't reach production it reports 1 of 7 — that is the script
+being honest, not a failure.
+
+Then the end-to-end cron run:
 
 After the last change, confirm a clean end-to-end run rather than waiting on
 tomorrow's:
