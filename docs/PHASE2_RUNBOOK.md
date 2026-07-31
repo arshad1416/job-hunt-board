@@ -413,3 +413,44 @@ broken — tell me and I will fix it before this merges.
 | §5 sync script | `cp ~/sync_to_dashboard.py.bak ~/.hermes/scripts/sync_to_dashboard.py` |
 | §6 liveness | `UPDATE applications SET status='found' WHERE status='expired' AND updated_at >= datetime('now','-1 hour');` |
 | Everything | `git -C ~/job-hunt-board checkout main`, then restore the §1 dump if Turso itself needs reverting. |
+
+---
+
+## 9. Corrections from the Pi execution session (2026-07-31)
+
+Things this runbook assumed that turned out not to hold on the actual Pi.
+Recorded so the next run doesn't relearn them the hard way.
+
+- **No `turso` CLI on the Pi.** SETUP's `turso db tokens create` and every
+  `turso db shell` invocation do not exist here. Everything ran over the Turso
+  **HTTP v2 pipeline API** instead, using the token already at
+  `~/.hermes/turso_token.txt` (the same file `turso_helper.py` reads). §1's
+  backup was done with a hand-rolled `~/backup-applications.mjs` (schema + one
+  INSERT per row, verified `COUNT(*) == rows == INSERT lines == 6598`), kept at
+  `~/applications-backup-2026-07-31.sql`.
+
+- **§3's core premise is wrong for this stack.** jobspy does **not** return a
+  description in search results here: the MCP `scrape_jobs` tool emits a plain
+  text summary (Title/Company/Location/URL/Posted) with no description field —
+  even with `description_format="markdown"` — so `call_mcp_search` falls to
+  `parse_mcp_text`, which sets `description = title`. `adzuna_scraper.py:124`
+  likewise hardcodes `"description": title`. The §3 patch was applied faithfully
+  (jobs now carry `description` into the INSERT, capped at 20k) but it can only
+  ever store the **title**, not real JD prose. Real descriptions require a
+  second per-posting call to the MCP's **`fetch_job`** tool — a scope addition
+  (141+ extra outbound calls to LinkedIn/Indeed per run) deliberately NOT made.
+  Consequence: criterion 3 passes the automated check (non-empty description),
+  but the DoD "resume quotes the posting" check would expose it as title-level.
+
+- **Baseline was 2/7, not 3/7.** Criteria 1 & 2 check the **live** site, and the
+  PR was not deployed, so they read red until the merge. Criterion 5 passes off
+  local source, which is why it looked like a code property.
+
+- **Production deploys off `master`, not `main`.** `origin/HEAD -> origin/master`.
+  Merging PR #2 into `main` did not go live until `master` fast-forwarded to it
+  (the daily sync pushes `main:master`, which is what carried it).
+
+- **Criterion 3 is a rolling ≤2-day window.** It counts rows with
+  `found_at >= now-2days`. Today's real run refilled it; the cron is Mon–Fri, so
+  it self-heals each weekday but can read red over the weekend gap until Monday's
+  run. A red criterion 3 on a Saturday is expected, not a regression.
