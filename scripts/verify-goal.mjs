@@ -140,7 +140,21 @@ async function checkDescriptionColumn(env) {
   };
 }
 
-/** 4. jobs.json rows carry a non-empty summary. */
+/**
+ * 4. jobs.json rows carry a non-empty summary.
+ *
+ * A summary that merely repeats the job title does not count. On
+ * 2026-07-31 a sync produced 141 such rows and this check passed on them,
+ * reporting the goal met while every resume was still being written from
+ * a title — the same blind spot criterion 3 had. Both are closed now.
+ *
+ * Note on what "pass" can mean here. The scraper supplies no JD text, so
+ * descriptions arrive lazily from /api/generate, one job at a time. Full
+ * coverage of every row would need a per-posting fetch during the nightly
+ * run, which is ruled out on rate-limit grounds. So this reports real
+ * coverage honestly and passes once genuine summaries exist, rather than
+ * holding out for a total that cannot be reached.
+ */
 async function checkSummaries() {
   let data;
   try {
@@ -148,12 +162,39 @@ async function checkSummaries() {
   } catch (err) {
     return { pass: false, detail: `could not read data/jobs.json: ${err.message}` };
   }
+
   const jobs = data.jobs || [];
-  const withSummary = jobs.filter(j => (j.summary || '').trim()).length;
+  const norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+  const nonEmpty = jobs.filter(j => (j.summary || '').trim());
+  const titleEcho = nonEmpty.filter(j => norm(j.summary) === norm(j.title));
+  const real = nonEmpty.length - titleEcho.length;
+
+  if (nonEmpty.length === 0) {
+    return {
+      pass: false,
+      detail:
+        `0 of ${jobs.length} rows have a summary. Descriptions arrive when you ` +
+        'generate materials for a job; run scripts/backfill-descriptions.mjs ' +
+        '--limit 200 --order score to seed a shortlist up front.'
+    };
+  }
+  if (real === 0) {
+    return {
+      pass: false,
+      detail:
+        `${nonEmpty.length} of ${jobs.length} rows have a summary, but ALL of them ` +
+        'just repeat the job title — placeholders from the scraper, not real ' +
+        'summaries. See runbook §3.'
+    };
+  }
   return {
-    pass: withSummary > 0,
-    detail: `${withSummary} of ${jobs.length} rows have a non-empty summary` +
-      (withSummary === 0 ? ' — runbook §3 + §5 not done' : '')
+    pass: true,
+    detail:
+      `${real} of ${jobs.length} rows have a real summary` +
+      (titleEcho.length ? `; ${titleEcho.length} are title-echo placeholders` : '') +
+      '. Coverage grows as jobs are generated — full-table coverage is out of ' +
+      'scope by design (needs a per-posting fetch on every nightly run).'
   };
 }
 
