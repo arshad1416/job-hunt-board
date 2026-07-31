@@ -529,15 +529,43 @@
 
   /**
    * Open materials in new tabs (resume + cover letter).
-   * The /api/materials route is public (no auth header needed) so
-   * direct browser navigation works.
+   * /api/materials is no longer public, so ask /api/material-links for
+   * short-lived signed URLs first. The tabs are opened up front (while
+   * still inside the click handler) so popup blockers allow them, then
+   * pointed at the signed URLs once the server responds.
    */
-  function viewMaterials(jobId) {
-    const resumeUrl = '/api/materials/' + jobId + '/resume.md';
-    const coverUrl = '/api/materials/' + jobId + '/cover_letter.md';
-    window.open(resumeUrl, '_blank');
-    window.open(coverUrl, '_blank');
+  async function viewMaterials(jobId) {
+    if (!getToken()) {
+      showToast('Please set your auth token first (🔑 Token button).', 'error');
+      showModal('token-modal');
+      return;
+    }
+
+    const resumeTab = window.open('', '_blank');
+    const coverTab = window.open('', '_blank');
     showToast('Opening materials in new tabs…', 'info', 2000);
+
+    try {
+      const res = await fetch('/api/material-links', {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ job_id: jobId })
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Could not sign material links (HTTP ' + res.status + ')');
+      }
+
+      if (resumeTab) resumeTab.location.href = data.materials.resume;
+      if (coverTab) coverTab.location.href = data.materials.cover_letter;
+    } catch (err) {
+      console.error('viewMaterials error:', err);
+      if (resumeTab) resumeTab.close();
+      if (coverTab) coverTab.close();
+      showToast('Failed to open materials: ' + err.message, 'error');
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════

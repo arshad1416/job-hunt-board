@@ -1,6 +1,8 @@
 /* ═══════════════════════════════════════════════════════════════
    GET /api/materials/:job_id/:filename
-   Public (GET only — no auth, so browser can open in new tabs)
+   NOT public. _middleware.js requires either an X-Auth-Token header
+   or a valid signed ?token= (see functions/_lib/signing.js), so
+   enumerating numeric job_ids returns 401, not a resume.
 
    Serves files from R2 bucket JOB_MATERIALS_BUCKET.
    Path params: job_id (int), filename (allow-listed)
@@ -71,7 +73,10 @@ export async function onRequestGet(context) {
   const headers = new Headers();
   headers.set('Content-Type', contentType);
   headers.set('Content-Disposition', `inline; filename="${filename}"`);
-  headers.set('Cache-Control', 'private, max-age=300');
+  // Personal documents: never cached by shared caches, never indexed.
+  headers.set('Cache-Control', 'private, no-store');
+  headers.set('X-Content-Type-Options', 'nosniff');
+  headers.set('X-Robots-Tag', 'noindex, nofollow');
 
   return new Response(object.body, {
     status: 200,

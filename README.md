@@ -39,12 +39,14 @@ job-hunt-board/
 │   └── jobs.json                       # Daily-exported job data (Pi writes, git-tracked)
 └── functions/
     ├── _lib/
-    │   └── turso.js                    # Shared Turso v2 pipeline helper
+    │   ├── turso.js                    # Shared Turso v2 pipeline helper
+    │   └── signing.js                  # HMAC-signed, time-limited material links
     └── api/
-        ├── _middleware.js              # CORS + auth gate for /api/*
-        ├── health.js                   # GET  /api/health
+        ├── _middleware.js              # Pinned CORS + auth gate for /api/*
+        ├── health.js                   # GET  /api/health          (public)
         ├── generate.js                 # POST /api/generate
         ├── applied.js                  # POST /api/applied
+        ├── material-links.js           # POST /api/material-links  (mints signed URLs)
         └── materials/
             └── [job_id]/
                 └── [filename].js       # GET  /api/materials/:job_id/:filename
@@ -61,8 +63,25 @@ All configured in the **Cloudflare Pages dashboard** (Settings → Environment v
 | `TURSO_URL` | plaintext var | dashboard + `wrangler.jsonc` | `https://morning-briefing-arshad1416.aws-us-east-1.turso.io` |
 | `TURSO_TOKEN` | **secret** | dashboard only | Turso DB auth token (Bearer). Same token the Pi uses. |
 | `OPENCODE_GO_API_KEY` | **secret** | dashboard only | OpenCode Go API key for GLM-5.2. |
-| `DASHBOARD_AUTH_TOKEN` | **secret** | dashboard only | Shared secret for `/api/*` mutations. Browser sends `X-Auth-Token` header. Generate with `openssl rand -hex 32`. |
+| `DASHBOARD_AUTH_TOKEN` | **secret** | dashboard only | Shared secret for all `/api/*` routes except `/api/health`. Browser sends `X-Auth-Token` header. Generate with `openssl rand -hex 32`. |
+| `MATERIALS_SIGNING_KEY` | **secret** _(optional)_ | dashboard only | HMAC key for signed material links. Falls back to `DASHBOARD_AUTH_TOKEN` when unset. Set it to rotate material links independently of the dashboard token. |
+| `ALLOWED_ORIGINS` | plaintext var _(optional)_ | dashboard only | Comma-separated CORS allow-list. Defaults to `https://jobs.arshadkazi.ca`, `https://job-hunt-board.pages.dev`, `http://localhost:8788`. |
 | `JOB_MATERIALS_BUCKET` | R2 binding | dashboard + `wrangler.jsonc` | R2 bucket name: `job-hunt-materials` |
+
+### API Security Model
+
+| Route | Access |
+|---|---|
+| `GET /api/health` | Public (uptime monitors). Returns booleans only — never values. |
+| `GET /api/materials/:job_id/:filename` | **Not public.** Requires an `X-Auth-Token` header, or a signed `?token=` minted by `/api/material-links`. Enumerating numeric `job_id`s returns `401`. |
+| `POST /api/material-links` | `X-Auth-Token` required. Returns 15-minute signed URLs for one job's materials. |
+| `POST /api/generate`, `POST /api/applied` | `X-Auth-Token` required. |
+
+Signed links are HMAC-SHA256 over `v1:<job_id>:<filename>:<exp>` (see `functions/_lib/signing.js`). A token is bound to one job **and** one filename, so it cannot be walked sideways to another posting or another file, and it expires on its own. Browser tabs can't send custom headers, which is why signed URLs exist — `viewMaterials()` in `app.js` opens the tabs, then points them at freshly signed URLs.
+
+CORS is pinned to the allow-list above; an unrecognised `Origin` receives no `Access-Control-Allow-Origin` header at all. Responses carry `Vary: Origin`. Material responses are served `private, no-store` with `nosniff` and `X-Robots-Tag: noindex`.
+
+If `DASHBOARD_AUTH_TOKEN` is unset on the server, every non-public route fails closed with `503` rather than opening up.
 
 ### Turso
 

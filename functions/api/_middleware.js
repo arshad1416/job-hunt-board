@@ -3,91 +3,123 @@
    ═══════════════════════════════════════════════════════════════
 
    Applies to ALL /api/* routes:
-   - Always sets CORS headers
+   - CORS pinned to an allow-list of origins (never '*')
    - Handles OPTIONS preflight → 204
-   - Skips auth for:  GET /api/health, GET /api/materials/*
-   - Requires X-Auth-Token for mutations (generate, applied)
+   - Public without auth:  GET /api/health  (uptime checks only)
+   - Everything else needs either
+       · a valid X-Auth-Token header, or
+       · for GET /api/materials/:job_id/:filename, a valid signed
+         ?token= (browser tabs cannot set request headers)
    ═══════════════════════════════════════════════════════════════ */
 
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, X-Auth-Token',
-  'Access-Control-Max-Age': '86400'
-};
+import { verifyMaterialsToken, timingSafeEqual } from '../_lib/signing.js';
 
-/** Paths that do NOT require authentication */
-const PUBLIC_PATHS = [
-  '/api/health'
+/** Origins allowed to call the API cross-origin. Overridable via ALLOWED_ORIGINS. */
+const DEFAULT_ALLOWED_ORIGINS = [
+  'https://jobs.arshadkazi.ca',
+  'https://job-hunt-board.pages.dev',
+  'http://localhost:8788'
 ];
 
-/** Path prefixes that do NOT require authentication (GET only) */
-const PUBLIC_PREFIXES = [
-  '/api/materials/'
-];
+/** Only /api/health is reachable without credentials. */
+const PUBLIC_PATHS = ['/api/health'];
 
-function isPublic(path, method) {
-  // Health is always public (uptime checks)
-  if (PUBLIC_PATHS.includes(path)) return true;
-  // Materials GET is public (so browser can open in new tabs)
-  if (method === 'GET' && PUBLIC_PATHS.some(p => path === p)) return true;
+/** GET /api/materials/<numeric job_id>/<filename> */
+const MATERIALS_PATH = /^\/api\/materials\/(\d+)\/([A-Za-z0-9._-]+)$/;
+
+function allowedOrigins(env) {
+  const raw = (env.ALLOWED_ORIGINS || '').trim();
+  if (!raw) return DEFAULT_ALLOWED_ORIGINS;
+  return raw.split(',').map(s => s.trim()).filter(Boolean);
+}
+
+/**
+ * CORS headers for this request. Access-Control-Allow-Origin is echoed
+ * back only for allow-listed origins — an unknown origin gets no ACAO
+ * at all, so the browser blocks the response. Same-origin requests from
+ * the dashboard send no Origin and are unaffected.
+ */
+function corsHeaders(request, env) {
+  const origin = request.headers.get('Origin');
+  const headers = {
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, X-Auth-Token',
+    'Access-Control-Max-Age': '86400'
+  };
+  if (origin && allowedOrigins(env).includes(origin)) {
+    headers['Access-Control-Allow-Origin'] = origin;
+  }
+  return headers;
+}
+
+/**
+ * Decide whether the request may proceed.
+ * @returns {Promise<Response|null>} a rejection Response, or null to allow
+ */
+async function authorize(request, env, url, method, cors) {
+  const expectedToken = env.DASHBOARD_AUTH_TOKEN;
+
+  if (!expectedToken) {
+    // No token configured on the server side — fail closed.
+    return json(
+      { error: 'Server auth not configured (DASHBOARD_AUTH_TOKEN missing)' },
+      503,
+      cors
+    );
+  }
+
+  const header = request.headers.get('X-Auth-Token');
+  if (header && timingSafeEqual(header, expectedToken)) return null;
+
+  // Signed, time-limited link — the only way a plain browser navigation
+  // (window.open / new tab) can reach a material file.
   if (method === 'GET') {
-    for (const prefix of PUBLIC_PREFIXES) {
-      if (path.startsWith(prefix)) return true;
+    const match = MATERIALS_PATH.exec(url.pathname);
+    if (match) {
+      const ok = await verifyMaterialsToken(
+        env,
+        match[1],
+        match[2],
+        url.searchParams.get('token')
+      );
+      if (ok) return null;
     }
   }
-  return false;
+
+  return json({ error: 'unauthorized' }, 401, cors);
 }
 
 export async function onRequest(context) {
   const { request, env, next } = context;
   const url = new URL(request.url);
-  const path = url.pathname;
   const method = request.method;
+  const cors = corsHeaders(request, env);
 
   // Handle CORS preflight
   if (method === 'OPTIONS') {
     return new Response(null, {
       status: 204,
-      headers: CORS_HEADERS
+      headers: { ...cors, Vary: 'Origin' }
     });
   }
 
-  // Check auth for non-public routes
-  if (!isPublic(path, method)) {
-    const authHeader = request.headers.get('X-Auth-Token');
-    const expectedToken = env.DASHBOARD_AUTH_TOKEN;
-
-    if (!expectedToken) {
-      // No token configured on the server side — reject all mutations
-      return new Response(
-        JSON.stringify({ error: 'Server auth not configured (DASHBOARD_AUTH_TOKEN missing)' }),
-        {
-          status: 503,
-          headers: { 'Content-Type': 'application/json', ...CORS_HEADERS }
-        }
-      );
-    }
-
-    if (!authHeader || authHeader !== expectedToken) {
-      return new Response(
-        JSON.stringify({ error: 'unauthorized' }),
-        {
-          status: 401,
-          headers: { 'Content-Type': 'application/json', ...CORS_HEADERS }
-        }
-      );
-    }
+  if (!PUBLIC_PATHS.includes(url.pathname)) {
+    const denied = await authorize(request, env, url, method, cors);
+    if (denied) return denied;
   }
 
   // Add CORS headers to the downstream response
   const response = await next();
   const newResponse = new Response(response.body, response);
-  Object.entries(CORS_HEADERS).forEach(([k, v]) => {
-    // Don't override Access-Control-Allow-Origin if already set
-    if (!newResponse.headers.has(k)) {
-      newResponse.headers.set(k, v);
-    }
-  });
+  Object.entries(cors).forEach(([k, v]) => newResponse.headers.set(k, v));
+  newResponse.headers.append('Vary', 'Origin');
   return newResponse;
+}
+
+/** Helper: JSON response carrying CORS headers */
+function json(obj, status, cors) {
+  return new Response(JSON.stringify(obj), {
+    status,
+    headers: { 'Content-Type': 'application/json', ...cors, Vary: 'Origin' }
+  });
 }

@@ -12,6 +12,7 @@
    ═══════════════════════════════════════════════════════════════ */
 
 import { tursoQuery, tursoExecute } from '../_lib/turso.js';
+import { signedMaterialUrls } from '../_lib/signing.js';
 
 const GLM_ENDPOINT = 'https://opencode.ai/zen/go/v1/chat/completions';
 const GLM_MODEL = 'glm-5.2';
@@ -183,10 +184,7 @@ export async function onRequestPost(context) {
           success: true,
           job_id: jobId,
           cached: true,
-          materials: {
-            resume: `/api/materials/${jobId}/resume.md`,
-            cover_letter: `/api/materials/${jobId}/cover_letter.md`
-          }
+          materials: await signedMaterialUrls(env, jobId)
         });
       }
     } catch {
@@ -250,14 +248,11 @@ export async function onRequestPost(context) {
     // Non-fatal — materials are in R2, just status not updated
   }
 
-  // ── 7. Return success ──
+  // ── 7. Return success (short-lived signed links) ──
   return json({
     success: true,
     job_id: jobId,
-    materials: {
-      resume: `/api/materials/${jobId}/resume.md`,
-      cover_letter: `/api/materials/${jobId}/cover_letter.md`
-    }
+    materials: await signedMaterialUrls(env, jobId)
   });
 }
 
