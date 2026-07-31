@@ -123,6 +123,36 @@ continue.
 > `sync_to_dashboard.py` also treat a title-only description as *absent*,
 > so a repeat of this cannot silently degrade a resume.
 >
+> ### Resolution (2026-07-31): descriptions are fetched on demand, not scraped
+>
+> The Pi session established the real cause, and it is upstream of the
+> INSERT: **the scraper never returns JD text at all.** The MCP
+> `scrape_jobs` tool emits a plain-text summary (Title/Company/Location/
+> URL/Posted) with no description field, even with
+> `description_format="markdown"`, so `parse_mcp_text` sets
+> `description = title`. `adzuna_scraper.py:124` hardcodes the same. The §3
+> patch was applied faithfully and *cannot* do better — no INSERT fix
+> conjures text that was never fetched.
+>
+> Getting real prose at scrape time would need a per-posting `fetch_job`
+> call: 140+ extra hits on LinkedIn/Indeed every night, which is exactly
+> the rate-limit exposure this project is avoiding.
+>
+> **So the JD is now fetched lazily in `/api/generate` instead** — one
+> request, only for a job you actually clicked Generate on, using the same
+> `functions/_lib/extract-jd.mjs` extractor as the backfill script. The
+> result is cached back into `description` (guarded so a real body is never
+> clobbered), so the next generate is instant and the nightly sync can
+> build a real summary from it. Every failure path — anti-bot wall, 404,
+> timeout, title-only page — degrades to the "no description captured"
+> prompt rather than failing the request.
+>
+> **What this means for the criteria:** criterion 3 no longer requires
+> descriptions to arrive from a scrape, only that real posting bodies
+> exist. Criterion 4 (bulk `jobs.json` summaries) stays largely unmet by
+> design — summaries appear for jobs you have generated materials for, and
+> grow over time, rather than all 6.6K rows at once.
+>
 > **Before re-running:** confirm jobspy is actually returning description
 > text, rather than assuming the INSERT is at fault:
 > ```python

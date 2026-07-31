@@ -26,7 +26,10 @@
 
 import { tursoQuery, tursoExecute, hasColumn } from './lib/turso.mjs';
 import { jitteredDelayMs, sleep } from './lib/liveness.mjs';
-import { extractJobDescription } from './lib/extract-jd.mjs';
+// Shared with the Worker: .mjs so both Cloudflare Pages Functions and bare
+// Node can import the same file (a plain .js would load as CommonJS here,
+// and adding a package.json would give this repo a build step it must not have).
+import { extractJobDescription } from '../functions/_lib/extract-jd.mjs';
 
 const UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 ' +

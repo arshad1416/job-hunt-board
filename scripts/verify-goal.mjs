@@ -113,39 +113,30 @@ async function checkDescriptionColumn(env) {
 
   const titleOnly = s.title_only || 0;
   const substantial = s.substantial || 0;
-  const recent = s.recent || 0;
 
+  // Recency-from-scrape is deliberately NOT required any more. The scraper
+  // cannot supply JD text at all (the MCP scrape_jobs tool returns a
+  // plain-text summary with no description field), so descriptions now
+  // arrive lazily from /api/generate — one fetch per job you actually
+  // generate materials for. What matters is that real posting bodies exist,
+  // not that they arrived on last night's run.
   if (substantial === 0) {
     return {
       pass: false,
       detail:
         `${populated} rows populated but NONE are >=200 chars` +
-        (titleOnly ? ` and ${titleOnly} are exactly the job title` : '') +
-        ' — the column is being filled with headlines, not posting bodies. ' +
-        'job_hunt_daily.py is binding the wrong field. See runbook §3.'
-    };
-  }
-  if (titleOnly > populated / 2) {
-    return {
-      pass: false,
-      detail:
-        `${titleOnly} of ${populated} populated rows hold only the job title ` +
-        `(${substantial} look like real bodies) — job_hunt_daily.py is binding ` +
-        'the wrong field for most rows. See runbook §3.'
-    };
-  }
-  if (recent === 0) {
-    return {
-      pass: false,
-      detail: `${populated} populated but none in the last 2 days — likely backfill only, not a real job_hunt_daily.py run`
+        (titleOnly ? `, and ${titleOnly} are exactly the job title` : '') +
+        ' — the column holds headlines, not posting bodies. Generate materials ' +
+        'for one job to pull a real JD, or see runbook §3.'
     };
   }
   return {
     pass: true,
     detail:
-      `${populated} of ${s.total} populated, ${substantial} with real posting bodies, ` +
-      `${recent} from the last 2 days` +
-      (titleOnly ? ` (${titleOnly} title-only rows remain)` : '')
+      `${substantial} row(s) hold real posting bodies (>=200 chars) of ` +
+      `${populated} populated` +
+      (titleOnly ? `; ${titleOnly} are title-only placeholders from the scraper` : '') +
+      '. Descriptions arrive on demand at generate time — see runbook §3.'
   };
 }
 

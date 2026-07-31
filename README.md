@@ -258,7 +258,9 @@ Written daily by the Pi's `sync_to_dashboard.py`:
 
 > **Note:** The Turso `applications` table has no `posted_at` column — `found_at` stands in for posted date.
 >
-> `description` **is** an `applications` column as of `migrations/001_add_description_column.sql`. It holds the real job-description body captured by `job_hunt_daily.py`, and `/api/generate` sends it to GLM-5.2 so resumes are written from the posting text rather than the job title.
+> `description` **is** an `applications` column as of `migrations/001_add_description_column.sql`, and `/api/generate` sends it to GLM-5.2 so resumes are written from the posting text rather than the job title.
+>
+> **Descriptions are fetched on demand, not scraped.** The MCP `scrape_jobs` tool returns a plain-text summary with no description field, so the pipeline can only store the job title. Rather than adding a per-posting `fetch_job` call to the nightly run — 140+ extra hits on LinkedIn/Indeed every night — `/api/generate` fetches the posting URL once, for the job you actually clicked Generate on, extracts the body via `functions/_lib/extract-jd.mjs`, and caches it back into `description`. A description that merely restates the title, or is under 120 chars, is treated as **absent**: handing the model a headline labelled "source of truth" invites fabrication.
 >
 > `jobs.json` deliberately ships only a ≤200-char excerpt in `summary`/`description`, plus a `has_description` boolean. At ~6.6K rows the full JD text would add tens of MB to a file the browser downloads whole; the full text stays in Turso where the API reads it. Summaries were empty on every row until this landed, because the old code derived them solely from a `Summary:` fragment in `notes` that the pipeline never wrote.
 
