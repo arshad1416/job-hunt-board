@@ -1,0 +1,25 @@
+-- 001_add_description_column.sql
+--
+-- Additive migration: give `applications` somewhere to keep the real job
+-- description body, so /api/generate can prompt GLM-5.2 with the posting
+-- text instead of the job title alone.
+--
+-- Additive only. No column is dropped, renamed, retyped or reordered, and
+-- no row is touched. Existing readers that SELECT explicit column lists are
+-- unaffected; the column defaults to NULL.
+--
+-- BACK UP FIRST. Turso is live production:
+--   turso db shell <db> ".dump" > applications-backup-$(date +%F).sql
+--
+-- Then apply either via the guarded script (checks the column first, so it
+-- is safe to re-run):
+--   node scripts/add-description-column.mjs --confirm
+--
+-- ...or directly:
+--   turso db shell <db> < migrations/001_add_description_column.sql
+--
+-- SQLite has no ADD COLUMN IF NOT EXISTS, so running this twice raises
+-- "duplicate column name: description". That error is harmless — it means
+-- the migration is already applied.
+
+ALTER TABLE applications ADD COLUMN description TEXT;

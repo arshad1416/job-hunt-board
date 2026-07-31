@@ -4,7 +4,9 @@
 
    Flow:
    1. Parse body { job_id, title?, company? }
-   2. Fetch full job row from Turso (parameterized)
+   2. Fetch full job row from Turso (parameterized) — including the
+      `description` column, so the model sees the real JD body and not
+      just the job title
    3. Call GLM-5.2 (OpenCode Go) → resume.md + cover_letter.md
    4. Store in R2:  materials/<job_id>/{resume,cover_letter}.md
    5. Update Turso: status='materials_ready'
@@ -12,9 +14,13 @@
    ═══════════════════════════════════════════════════════════════ */
 
 import { tursoQuery, tursoExecute } from '../_lib/turso.js';
+import { signedMaterialUrls } from '../_lib/signing.js';
 
 const GLM_ENDPOINT = 'https://opencode.ai/zen/go/v1/chat/completions';
 const GLM_MODEL = 'glm-5.2';
+
+/** Upper bound on JD text sent to the model, in characters. */
+const MAX_JD_CHARS = 6000;
 
 // ── Candidate profile (embedded — same as Pi-side resume_profile.yaml) ──
 const CANDIDATE_PROFILE = `
@@ -39,6 +45,46 @@ Strengths: cross-functional leadership, go-to-market strategy, technical depth,
 bilingual (English/Hindi/Urdu), willing to relocate or travel extensively.
 `;
 
+// ── Job description handling ──
+
+/**
+ * The verbatim JD body, trimmed and length-capped.
+ * `description` is the real posting text captured by job_hunt_daily.py.
+ * `notes` is the pipeline's pipe-delimited salary/summary line — a poor
+ * substitute, but better than nothing on rows predating the column.
+ * @returns {string|null} JD text, or null when nothing usable exists
+ */
+function jobDescriptionText(job) {
+  const raw = String(job.description || '').trim();
+  if (!raw) return null;
+  const clean = raw.replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+  if (!clean) return null;
+  return clean.length > MAX_JD_CHARS
+    ? clean.slice(0, MAX_JD_CHARS).trimEnd() + '\n\n[… description truncated]'
+    : clean;
+}
+
+/**
+ * The JD section of the prompt. When no description was captured we say so
+ * explicitly rather than silently letting the model invent requirements.
+ */
+function jobDescriptionBlock(job) {
+  const jd = jobDescriptionText(job);
+  if (jd) {
+    return `
+FULL JOB DESCRIPTION (verbatim from the posting — treat this as the source of truth):
+"""
+${jd}
+"""
+`;
+  }
+  return `
+FULL JOB DESCRIPTION: not captured for this posting.
+Work only from the fields above. Do NOT invent requirements, tools, or
+responsibilities that are not stated.
+`;
+}
+
 // ── Prompt templates ──
 function resumePrompt(job) {
   return `You are an expert resume writer. Create a tailored, professional resume in Markdown format
@@ -55,15 +101,21 @@ JOB DETAILS:
 - Salary: ${job.salary || 'Not specified'}
 - Track: ${job.track || 'general'}
 - Notes: ${job.notes || 'N/A'}
-
+${jobDescriptionBlock(job)}
 INSTRUCTIONS:
 1. Write the resume in clean Markdown (## for sections, ** for emphasis)
 2. Start with a compelling professional summary (3-4 lines) tailored to THIS role
 3. Include relevant experience bullet points that map to the job requirements
 4. List key skills aligned with the position
-5. Keep it to one page (concise, impactful bullets)
-6. Do NOT include contact details beyond name and location
-7. Output ONLY the resume markdown — no preamble, no explanations
+5. Mirror the exact terminology, tools, and phrasing used in the job
+   description above — recruiters and ATS filters match on those words
+6. Prioritise the requirements the description states first or repeats
+7. Ground every claim in the candidate profile. Never invent a requirement
+   the description does not mention, and never claim experience the profile
+   does not support
+8. Keep it to one page (concise, impactful bullets)
+9. Do NOT include contact details beyond name and location
+10. Output ONLY the resume markdown — no preamble, no explanations
 
 Begin:`;
 }
@@ -82,16 +134,20 @@ JOB DETAILS:
 - Salary: ${job.salary || 'Not specified'}
 - Track: ${job.track || 'general'}
 - Notes: ${job.notes || 'N/A'}
-
+${jobDescriptionBlock(job)}
 INSTRUCTIONS:
 1. Write in a professional but warm tone
 2. Address it to the hiring manager (use "Dear Hiring Manager" if no name)
 3. Open with a strong hook referencing the specific role and company
-4. Highlight 2-3 key achievements most relevant to THIS job
-5. Show genuine enthusiasm and cultural fit
-6. Close with a clear call to action
-7. Keep it to 3-4 paragraphs (under 350 words)
-8. Output ONLY the cover letter — no preamble, no explanations
+4. Highlight 2-3 key achievements most relevant to THIS job, chosen to answer
+   the requirements the job description actually emphasises
+5. Reference at least one concrete detail from the job description so the
+   letter could not have been written from the job title alone
+6. Show genuine enthusiasm and cultural fit
+7. Never claim experience the candidate profile does not support
+8. Close with a clear call to action
+9. Keep it to 3-4 paragraphs (under 350 words)
+10. Output ONLY the cover letter — no preamble, no explanations
 
 Begin:`;
 }
@@ -183,10 +239,7 @@ export async function onRequestPost(context) {
           success: true,
           job_id: jobId,
           cached: true,
-          materials: {
-            resume: `/api/materials/${jobId}/resume.md`,
-            cover_letter: `/api/materials/${jobId}/cover_letter.md`
-          }
+          materials: await signedMaterialUrls(env, jobId)
         });
       }
     } catch {
@@ -209,6 +262,7 @@ export async function onRequestPost(context) {
   // ── 5. Store in R2 ──
   if (env.JOB_MATERIALS_BUCKET) {
     const key = `materials/${jobId}`;
+    const jd = jobDescriptionText(job);
     const jobDetails = JSON.stringify({
       job_id: jobId,
       title: job.title,
@@ -216,6 +270,11 @@ export async function onRequestPost(context) {
       location: job.location,
       salary: job.salary,
       track: job.track,
+      url: job.url,
+      // Record what the model actually saw, so a weak resume can be traced
+      // back to a missing or truncated JD rather than guessed at.
+      description_used: !!jd,
+      description: jd,
       generated_at: new Date().toISOString()
     }, null, 2);
 
@@ -250,14 +309,11 @@ export async function onRequestPost(context) {
     // Non-fatal — materials are in R2, just status not updated
   }
 
-  // ── 7. Return success ──
+  // ── 7. Return success (short-lived signed links) ──
   return json({
     success: true,
     job_id: jobId,
-    materials: {
-      resume: `/api/materials/${jobId}/resume.md`,
-      cover_letter: `/api/materials/${jobId}/cover_letter.md`
-    }
+    materials: await signedMaterialUrls(env, jobId)
   });
 }
 

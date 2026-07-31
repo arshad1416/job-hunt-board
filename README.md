@@ -39,12 +39,14 @@ job-hunt-board/
 │   └── jobs.json                       # Daily-exported job data (Pi writes, git-tracked)
 └── functions/
     ├── _lib/
-    │   └── turso.js                    # Shared Turso v2 pipeline helper
+    │   ├── turso.js                    # Shared Turso v2 pipeline helper
+    │   └── signing.js                  # HMAC-signed, time-limited material links
     └── api/
-        ├── _middleware.js              # CORS + auth gate for /api/*
-        ├── health.js                   # GET  /api/health
+        ├── _middleware.js              # Pinned CORS + auth gate for /api/*
+        ├── health.js                   # GET  /api/health          (public)
         ├── generate.js                 # POST /api/generate
         ├── applied.js                  # POST /api/applied
+        ├── material-links.js           # POST /api/material-links  (mints signed URLs)
         └── materials/
             └── [job_id]/
                 └── [filename].js       # GET  /api/materials/:job_id/:filename
@@ -61,8 +63,25 @@ All configured in the **Cloudflare Pages dashboard** (Settings → Environment v
 | `TURSO_URL` | plaintext var | dashboard + `wrangler.jsonc` | `https://morning-briefing-arshad1416.aws-us-east-1.turso.io` |
 | `TURSO_TOKEN` | **secret** | dashboard only | Turso DB auth token (Bearer). Same token the Pi uses. |
 | `OPENCODE_GO_API_KEY` | **secret** | dashboard only | OpenCode Go API key for GLM-5.2. |
-| `DASHBOARD_AUTH_TOKEN` | **secret** | dashboard only | Shared secret for `/api/*` mutations. Browser sends `X-Auth-Token` header. Generate with `openssl rand -hex 32`. |
+| `DASHBOARD_AUTH_TOKEN` | **secret** | dashboard only | Shared secret for all `/api/*` routes except `/api/health`. Browser sends `X-Auth-Token` header. Generate with `openssl rand -hex 32`. |
+| `MATERIALS_SIGNING_KEY` | **secret** _(optional)_ | dashboard only | HMAC key for signed material links. Falls back to `DASHBOARD_AUTH_TOKEN` when unset. Set it to rotate material links independently of the dashboard token. |
+| `ALLOWED_ORIGINS` | plaintext var _(optional)_ | dashboard only | Comma-separated CORS allow-list. Defaults to `https://jobs.arshadkazi.ca`, `https://job-hunt-board.pages.dev`, `http://localhost:8788`. |
 | `JOB_MATERIALS_BUCKET` | R2 binding | dashboard + `wrangler.jsonc` | R2 bucket name: `job-hunt-materials` |
+
+### API Security Model
+
+| Route | Access |
+|---|---|
+| `GET /api/health` | Public (uptime monitors). Returns booleans only — never values. |
+| `GET /api/materials/:job_id/:filename` | **Not public.** Requires an `X-Auth-Token` header, or a signed `?token=` minted by `/api/material-links`. Enumerating numeric `job_id`s returns `401`. |
+| `POST /api/material-links` | `X-Auth-Token` required. Returns 15-minute signed URLs for one job's materials. |
+| `POST /api/generate`, `POST /api/applied` | `X-Auth-Token` required. |
+
+Signed links are HMAC-SHA256 over `v1:<job_id>:<filename>:<exp>` (see `functions/_lib/signing.js`). A token is bound to one job **and** one filename, so it cannot be walked sideways to another posting or another file, and it expires on its own. Browser tabs can't send custom headers, which is why signed URLs exist — `viewMaterials()` in `app.js` opens the tabs, then points them at freshly signed URLs.
+
+CORS is pinned to the allow-list above; an unrecognised `Origin` receives no `Access-Control-Allow-Origin` header at all. Responses carry `Vary: Origin`. Material responses are served `private, no-store` with `nosniff` and `X-Robots-Tag: noindex`.
+
+If `DASHBOARD_AUTH_TOKEN` is unset on the server, every non-public route fails closed with `503` rather than opening up.
 
 ### Turso
 
@@ -227,6 +246,8 @@ Written daily by the Pi's `sync_to_dashboard.py`:
       "status": "found",
       "source": "indeed",
       "summary": "Lead Ontario dealer network development…",
+      "description": "Lead Ontario dealer network development…",
+      "has_description": true,
       "posted_date": "2026-06-18",
       "found_at": "2026-06-19 13:00:11",
       "has_materials": false
@@ -235,7 +256,32 @@ Written daily by the Pi's `sync_to_dashboard.py`:
 }
 ```
 
-> **Note:** The Turso `applications` table does NOT have `posted_at` or `description` columns. The frontend falls back to `found_at` for posted date and parses `notes` for summary when `posted_date`/`summary` are not present in the JSON.
+> **Note:** The Turso `applications` table has no `posted_at` column — `found_at` stands in for posted date.
+>
+> `description` **is** an `applications` column as of `migrations/001_add_description_column.sql`. It holds the real job-description body captured by `job_hunt_daily.py`, and `/api/generate` sends it to GLM-5.2 so resumes are written from the posting text rather than the job title.
+>
+> `jobs.json` deliberately ships only a ≤200-char excerpt in `summary`/`description`, plus a `has_description` boolean. At ~6.6K rows the full JD text would add tens of MB to a file the browser downloads whole; the full text stays in Turso where the API reads it. Summaries were empty on every row until this landed, because the old code derived them solely from a `Summary:` fragment in `notes` that the pipeline never wrote.
+
+---
+
+## Maintenance Scripts
+
+Zero-dependency Node 18+ (global `fetch`), run from the Pi. **All are dry-run by default** and need an explicit `--commit`/`--confirm` to write. See [docs/PHASE2_RUNBOOK.md](./docs/PHASE2_RUNBOOK.md) for the full procedure.
+
+| Script | Purpose |
+|---|---|
+| `scripts/add-description-column.mjs` | Applies the additive `description` migration. Idempotent — checks `PRAGMA table_info` first and re-counts rows after. |
+| `scripts/check-liveness.mjs` | Marks dead postings `expired`. Three-way verdict; **`uncertain` is never written**, so an anti-bot wall can't cost you a live posting. Sequential with a jittered 5–10s per-host delay. |
+| `scripts/backfill-descriptions.mjs` | Best-effort repair of rows predating the column. Secondary to capturing descriptions at scrape time. |
+| `scripts/verify-goal.mjs` | **Read-only.** Checks all seven success criteria against live Turso and the live site; exits non-zero until every one holds. |
+
+```bash
+export TURSO_URL=... TURSO_TOKEN=...
+node scripts/check-liveness.mjs --limit 50            # dry run
+node scripts/check-liveness.mjs --limit 50 --commit   # apply
+```
+
+Liveness detection is modelled on [santifer/career-ops](https://github.com/santifer/career-ops) `check-liveness.mjs`, minus Playwright — the Pi runs a Python pipeline and this repo has no build step.
 
 ---
 

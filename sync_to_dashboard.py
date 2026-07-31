@@ -11,6 +11,7 @@ Run: python3 ~/.hermes/scripts/sync_to_dashboard.py
 
 import json
 import os
+import re
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -28,16 +29,38 @@ DASHBOARD_DATA_DIR = DASHBOARD_REPO_PATH / "data"
 DASHBOARD_JOBS_JSON = DASHBOARD_DATA_DIR / "jobs.json"
 
 # ── Fetch from Turso ─────────────────────────────────────────────────────────
+BASE_COLUMNS = (
+    "id, source, external_id, company, title, location, url, "
+    "salary, match_score, track, status, notes, found_at"
+)
+
+# Rows in any of these states are still worth showing. 'expired' is
+# deliberately absent — the liveness pass moves dead postings there and
+# they drop off the board on the next sync.
+ACTIVE_STATUSES = "('found', 'materials_ready', 'applied', 'saved')"
+
+
 def fetch_all_jobs() -> list:
-    """Fetch all non-archived jobs, sorted by match_score DESC."""
-    rows = turso_query(
-        "SELECT id, source, external_id, company, title, location, url, "
-        "salary, match_score, track, status, notes, found_at "
-        "FROM applications "
-        "WHERE status IN ('found', 'materials_ready', 'applied', 'saved') "
-        "ORDER BY match_score DESC"
+    """Fetch all non-archived jobs, sorted by match_score DESC.
+
+    Tries to include the `description` column and falls back to the base
+    column list if it isn't there yet. The migration is additive and may
+    not have been applied, and the 9AM cron must not fail over it.
+    """
+    tail = (
+        f"FROM applications "
+        f"WHERE status IN {ACTIVE_STATUSES} "
+        f"ORDER BY match_score DESC"
     )
-    return rows
+    try:
+        return turso_query(f"SELECT {BASE_COLUMNS}, description {tail}")
+    except Exception as e:
+        print(
+            f"[sync] 'description' column unavailable ({e}); "
+            f"falling back to base columns",
+            file=sys.stderr,
+        )
+        return turso_query(f"SELECT {BASE_COLUMNS} {tail}")
 
 
 # ── Transform for dashboard ──────────────────────────────────────────────────
@@ -66,6 +89,46 @@ def extract_summary(notes: str) -> str:
                 and not low.startswith("estimated")):
             return part[:200]
     return ""
+
+
+SUMMARY_MAX = 200
+
+# Boilerplate openers that carry no signal about the actual role.
+_BOILERPLATE = re.compile(
+    r"^(about (us|the (company|role|team))|company (overview|description)|"
+    r"who we are|our (story|mission)|job (description|summary|overview))\b[:\s-]*",
+    re.IGNORECASE,
+)
+
+
+def summarize_description(description: str) -> str:
+    """Condense a JD body into a one-line summary of at most SUMMARY_MAX chars.
+
+    The stored description is raw posting text — HTML fragments, markdown
+    bullets and hard wrapping all show up. Collapse it to readable prose and
+    skip a leading boilerplate heading so the summary starts on something
+    that actually describes the job.
+    """
+    if not description:
+        return ""
+
+    text = re.sub(r"<br\s*/?>|</p>|</li>", " ", description, flags=re.IGNORECASE)
+    text = re.sub(r"<[^>]+>", " ", text)                 # strip stray HTML
+    text = re.sub(r"&(nbsp|amp|lt|gt|quot|#39);", " ", text)
+    text = re.sub(r"^[\s*_#>\-•]+", " ", text, flags=re.MULTILINE)
+    text = re.sub(r"\s+", " ", text).strip()
+    text = _BOILERPLATE.sub("", text).strip()
+    if not text:
+        return ""
+
+    if len(text) <= SUMMARY_MAX:
+        return text
+
+    cut = text[:SUMMARY_MAX]
+    space = cut.rfind(" ")
+    if space > SUMMARY_MAX * 0.6:                        # avoid mid-word cuts
+        cut = cut[:space]
+    return cut.rstrip(" ,;:.-") + "…"
 
 
 def transform_job(row: dict) -> dict:
@@ -98,8 +161,12 @@ def transform_job(row: dict) -> dict:
         except (ValueError, IndexError):
             pass
 
-    # Extract summary from notes (W10 — properly parse the 'Summary:' fragment)
-    summary = extract_summary(notes)
+    # Summary: prefer the real JD body, fall back to the 'Summary:' fragment
+    # in notes. The notes path only ever fires on rows captured before the
+    # description column existed — it was the sole source before, which is
+    # why every row shipped with an empty summary.
+    description = (row.get("description") or "").strip()
+    summary = summarize_description(description) or extract_summary(notes)
 
     # has_materials: a job has generated materials once it reached
     # 'materials_ready' or has already been applied (C3).
@@ -119,8 +186,13 @@ def transform_job(row: dict) -> dict:
         "status": status,
         "source": row.get("source", ""),
         "has_materials": has_materials,
+        # jobs.json ships the excerpt only, never the full JD body. At ~6.6K
+        # rows the full text would add tens of MB to a file the browser
+        # downloads whole, and payload splitting is deliberately deferred.
+        # The full description stays in Turso, where /api/generate reads it.
         "description": summary,
         "summary": summary,
+        "has_description": bool(description),
         "posted_date": row.get("found_at", ""),
         "found_at": row.get("found_at", ""),
     }
