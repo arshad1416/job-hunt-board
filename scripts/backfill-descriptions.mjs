@@ -31,6 +31,7 @@
  */
 
 import { tursoQuery, tursoExecute, hasColumn } from './lib/turso.mjs';
+import { acquireFetchLock } from './lib/lock.mjs';
 import { jitteredDelayMs, sleep } from './lib/liveness.mjs';
 // Shared with the Worker: .mjs so both Cloudflare Pages Functions and bare
 // Node can import the same file (a plain .js would load as CommonJS here,
@@ -63,7 +64,7 @@ const ORDERINGS = {
 function parseArgs(argv) {
   const o = {
     ...DEFAULTS,
-    commit: false, json: false, host: null, status: 'found',
+    commit: false, json: false, force: false, host: null, status: 'found',
     order: 'score', minScore: null
   };
   for (let i = 0; i < argv.length; i++) {
@@ -72,6 +73,7 @@ function parseArgs(argv) {
     if (a === '--commit') o.commit = true;
     else if (a === '--dry-run') o.commit = false;
     else if (a === '--json') o.json = true;
+    else if (a === '--force') o.force = true;
     else if (a === '--limit') o.limit = parseInt(next(), 10);
     else if (a === '--throttle') o.throttleMs = parseInt(next(), 10);
     else if (a === '--timeout') o.timeoutMs = parseInt(next(), 10);
@@ -104,6 +106,7 @@ backfill-descriptions.mjs — fill applications.description for old rows
   --throttle MS     base per-host delay, jittered to 1-2x (default 5000)
   --timeout MS      per-request timeout (default 20000)
   --min-chars N     reject anything shorter than this (default 200)
+  --force           override the single-instance lock (only if certain)
   --json            emit a JSON report on stdout
   -h, --help        this text
 
@@ -182,6 +185,16 @@ async function main() {
     process.exit(1);
   }
   if (o.help) { console.log(HELP); return; }
+
+  // One fetching run at a time — see scripts/lib/lock.mjs.
+  const lock = acquireFetchLock('backfill-descriptions', { force: o.force, startedAtMs: Date.now() });
+  if (!lock.ok) {
+    console.error('Refusing to start: ' + lock.reason);
+    process.exit(2);
+  }
+  if (lock.tookOverStale) {
+    console.error('note: took over a stale lock from a previous run\n');
+  }
 
   const env = process.env;
   const log = o.json ? () => {} : (...a) => console.log(...a);
