@@ -22,6 +22,13 @@ const GLM_MODEL = 'glm-5.2';
 /** Upper bound on JD text sent to the model, in characters. */
 const MAX_JD_CHARS = 6000;
 
+/**
+ * Floor for what counts as a job description. Anything shorter is a
+ * headline, not a posting body — feeding it to the model as "the full job
+ * description" is worse than admitting we have none.
+ */
+const MIN_JD_CHARS = 120;
+
 // ── Candidate profile (embedded — same as Pi-side resume_profile.yaml) ──
 const CANDIDATE_PROFILE = `
 Name: Arshad Kazi
@@ -47,11 +54,40 @@ bilingual (English/Hindi/Urdu), willing to relocate or travel extensively.
 
 // ── Job description handling ──
 
+/** Casefold + strip punctuation/whitespace, for comparing text for sameness. */
+function normalizeForCompare(s) {
+  return String(s || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+/**
+ * True when the stored "description" merely restates the job title and
+ * carries no posting body.
+ *
+ * This is a real failure mode, not a hypothetical: a pipeline change once
+ * wired the title into the description column, and every row looked
+ * populated while carrying nothing a resume could be tailored to. Passing
+ * that to the model labelled "FULL JOB DESCRIPTION — source of truth" is
+ * actively misleading, so it is treated as absent.
+ */
+function isTitleOnly(description, title) {
+  const d = normalizeForCompare(description);
+  const t = normalizeForCompare(title);
+  if (!d) return true;
+  if (!t) return false;
+  if (d === t) return true;
+  // A handful of extra words around the title is still a headline.
+  if (d.includes(t) && d.length - t.length < 20) return true;
+  return false;
+}
+
 /**
  * The verbatim JD body, trimmed and length-capped.
  * `description` is the real posting text captured by job_hunt_daily.py.
- * `notes` is the pipeline's pipe-delimited salary/summary line — a poor
- * substitute, but better than nothing on rows predating the column.
+ * Returns null when the column holds nothing usable — empty, a bare title,
+ * or too short to be a posting body.
  * @returns {string|null} JD text, or null when nothing usable exists
  */
 function jobDescriptionText(job) {
@@ -59,6 +95,8 @@ function jobDescriptionText(job) {
   if (!raw) return null;
   const clean = raw.replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
   if (!clean) return null;
+  if (clean.length < MIN_JD_CHARS) return null;
+  if (isTitleOnly(clean, job.title)) return null;
   return clean.length > MAX_JD_CHARS
     ? clean.slice(0, MAX_JD_CHARS).trimEnd() + '\n\n[… description truncated]'
     : clean;

@@ -90,6 +90,51 @@ continue.
 
 ## 3. Capture descriptions on the next scrape ← *the actual fix*
 
+> ### ⚠️ Known failure observed on 2026-07-31 — read this first
+>
+> A first attempt at this step ran and *looked* like it worked: the column
+> was populated, 141 rows had non-empty `summary`, and the row count grew
+> from 6595 to 6691. But **every populated row held the job title and
+> nothing else** — `summary` was exactly equal to `title` on 141 of 141
+> rows, mean length 32 chars, none longer than 85.
+>
+> That is this project's original bug wearing a disguise. Resumes were
+> still being generated from titles alone; the column just made it look
+> fixed.
+>
+> **Cause:** `job_hunt_daily.py` bound the title into the `description`
+> column — either the wrong variable in the args tuple, or jobspy returned
+> no description (because `description_format` was never requested) and a
+> fallback like `job.get("description") or job.get("title")` filled it in.
+>
+> **Check for it directly:**
+> ```bash
+> turso db shell morning-briefing \
+>   "SELECT COUNT(*) AS populated,
+>           SUM(CASE WHEN lower(trim(description))=lower(trim(title))
+>                    THEN 1 ELSE 0 END) AS title_only,
+>           SUM(CASE WHEN length(trim(description))>=200 THEN 1 ELSE 0 END) AS real_bodies
+>    FROM applications
+>    WHERE description IS NOT NULL AND trim(description) != ''"
+> ```
+> `title_only` must be ~0 and `real_bodies` must be most of `populated`.
+> `verify-goal.mjs` now enforces exactly this, so criterion 3 fails loudly
+> instead of passing on headline text. `generate.js` and
+> `sync_to_dashboard.py` also treat a title-only description as *absent*,
+> so a repeat of this cannot silently degrade a resume.
+>
+> **Before re-running:** confirm jobspy is actually returning description
+> text, rather than assuming the INSERT is at fault:
+> ```python
+> jobs = scrape_jobs(..., description_format="markdown")
+> print(jobs[["title"]].head())
+> print(jobs["description"].str.len().describe())   # must NOT be all-NaN or tiny
+> ```
+> If lengths are NaN or near-zero, the problem is the scrape call (3a), not
+> the INSERT (3b). Fix that first — no amount of INSERT correction
+> conjures text that was never fetched.
+
+
 This is the step that satisfies "populated by a real `job_hunt_daily.py`
 run". Everything else is repair work.
 

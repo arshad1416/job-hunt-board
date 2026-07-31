@@ -93,6 +93,34 @@ def extract_summary(notes: str) -> str:
 
 SUMMARY_MAX = 200
 
+# Floor for what counts as a job description. Shorter than this is a
+# headline, not a posting body.
+MIN_DESCRIPTION_CHARS = 120
+
+
+def _normalize_for_compare(s: str) -> str:
+    """Casefold and strip punctuation, for comparing text for sameness."""
+    return re.sub(r"[^a-z0-9]+", " ", (s or "").lower()).strip()
+
+
+def is_title_only(description: str, title: str) -> bool:
+    """True when `description` merely restates the job title.
+
+    A pipeline change once wired the title into the description column;
+    every row then looked populated while carrying nothing a resume could
+    be tailored to. Treat that as no description rather than letting a
+    title masquerade as a summary.
+    """
+    d = _normalize_for_compare(description)
+    t = _normalize_for_compare(title)
+    if not d:
+        return True
+    if not t:
+        return False
+    if d == t:
+        return True
+    return t in d and len(d) - len(t) < 20
+
 # Boilerplate openers that carry no signal about the actual role.
 _BOILERPLATE = re.compile(
     r"^(about (us|the (company|role|team))|company (overview|description)|"
@@ -166,6 +194,12 @@ def transform_job(row: dict) -> dict:
     # description column existed — it was the sole source before, which is
     # why every row shipped with an empty summary.
     description = (row.get("description") or "").strip()
+    # A description that is just the title, or too short to be a posting
+    # body, is not a description — do not let it become the summary.
+    if len(description) < MIN_DESCRIPTION_CHARS or is_title_only(
+        description, row.get("title", "")
+    ):
+        description = ""
     summary = summarize_description(description) or extract_summary(notes)
 
     # has_materials: a job has generated materials once it reached

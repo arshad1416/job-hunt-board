@@ -75,7 +75,17 @@ async function checkCorsPinned(o) {
   return { pass: true, detail: 'unknown origin gets no ACAO; own origin echoed' };
 }
 
-/** 3. description column exists and a real run populated it. */
+/**
+ * 3. description column exists and a real run populated it with actual
+ *    posting bodies.
+ *
+ * "Populated" is not enough. A pipeline change once filled this column
+ * with the job title on every row: non-empty, recent, and completely
+ * useless — resumes were still being written from titles alone, which is
+ * the exact thing this project set out to fix. So the check also demands
+ * that the stored text is not merely the title and is long enough to be a
+ * posting body.
+ */
 async function checkDescriptionColumn(env) {
   if (!(await hasColumn(env, 'applications', 'description'))) {
     return { pass: false, detail: 'column missing — runbook §2 not applied' };
@@ -87,19 +97,55 @@ async function checkDescriptionColumn(env) {
                      THEN 1 ELSE 0 END) AS populated,
             SUM(CASE WHEN found_at >= datetime('now','-2 days')
                       AND description IS NOT NULL AND trim(description) != ''
-                     THEN 1 ELSE 0 END) AS recent
+                     THEN 1 ELSE 0 END) AS recent,
+            SUM(CASE WHEN description IS NOT NULL
+                      AND lower(trim(description)) = lower(trim(title))
+                     THEN 1 ELSE 0 END) AS title_only,
+            SUM(CASE WHEN description IS NOT NULL
+                      AND length(trim(description)) >= 200
+                     THEN 1 ELSE 0 END) AS substantial
      FROM applications`
   );
   const populated = s.populated || 0;
   if (populated === 0) {
     return { pass: false, detail: `column exists but 0 of ${s.total} rows populated — runbook §3 not done` };
   }
+
+  const titleOnly = s.title_only || 0;
+  const substantial = s.substantial || 0;
   const recent = s.recent || 0;
+
+  if (substantial === 0) {
+    return {
+      pass: false,
+      detail:
+        `${populated} rows populated but NONE are >=200 chars` +
+        (titleOnly ? ` and ${titleOnly} are exactly the job title` : '') +
+        ' — the column is being filled with headlines, not posting bodies. ' +
+        'job_hunt_daily.py is binding the wrong field. See runbook §3.'
+    };
+  }
+  if (titleOnly > populated / 2) {
+    return {
+      pass: false,
+      detail:
+        `${titleOnly} of ${populated} populated rows hold only the job title ` +
+        `(${substantial} look like real bodies) — job_hunt_daily.py is binding ` +
+        'the wrong field for most rows. See runbook §3.'
+    };
+  }
+  if (recent === 0) {
+    return {
+      pass: false,
+      detail: `${populated} populated but none in the last 2 days — likely backfill only, not a real job_hunt_daily.py run`
+    };
+  }
   return {
-    pass: recent > 0,
-    detail: recent > 0
-      ? `${populated} of ${s.total} populated, ${recent} from the last 2 days (a real run is writing them)`
-      : `${populated} of ${s.total} populated, but none in the last 2 days — likely backfill only, not a real job_hunt_daily.py run`
+    pass: true,
+    detail:
+      `${populated} of ${s.total} populated, ${substantial} with real posting bodies, ` +
+      `${recent} from the last 2 days` +
+      (titleOnly ? ` (${titleOnly} title-only rows remain)` : '')
   };
 }
 
