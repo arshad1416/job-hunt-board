@@ -3,11 +3,17 @@
  * backfill-descriptions.mjs — fill applications.description for rows that
  * predate the column.
  *
- * This is the SECONDARY path. The primary fix is job_hunt_daily.py storing
- * the description at scrape time, where the text is already in hand and no
- * extra request is needed — see docs/PHASE2_RUNBOOK.md. Use this only to
- * repair history, and expect a low hit rate: LinkedIn and Indeed wall
- * headless requests, and a walled page yields no description at all.
+ * This is the BULK path. Descriptions normally arrive lazily via
+ * /api/generate — one fetch for the job you actually generate materials
+ * for. Use this to fill a bounded shortlist up front instead, e.g. the
+ * best-matching few hundred rows.
+ *
+ * The scraper cannot supply descriptions at all (the MCP scrape_jobs tool
+ * returns no description field), so it stores the job title as a
+ * placeholder. Those rows count as needing a backfill here.
+ *
+ * Expect a low hit rate: LinkedIn and Indeed wall headless requests, and a
+ * walled page yields no description at all.
  *
  * Same safety posture as check-liveness.mjs:
  *   - DRY RUN BY DEFAULT; writing needs --commit
@@ -35,6 +41,9 @@ const UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 ' +
   '(KHTML, like Gecko) Chrome/125.0 Safari/537.36';
 
+/** Below this, a stored "description" is a placeholder, not a posting body. */
+const MIN_REAL_DESCRIPTION_CHARS = 120;
+
 const DEFAULTS = {
   limit: 50,
   throttleMs: 5000,
@@ -44,8 +53,19 @@ const DEFAULTS = {
   maxFailuresPerHost: 5
 };
 
+/** Row ordering. 'score' targets the jobs actually worth applying to. */
+const ORDERINGS = {
+  score: 'match_score DESC, id DESC',
+  newest: 'id DESC',
+  oldest: 'id ASC'
+};
+
 function parseArgs(argv) {
-  const o = { ...DEFAULTS, commit: false, json: false, host: null, status: 'found' };
+  const o = {
+    ...DEFAULTS,
+    commit: false, json: false, host: null, status: 'found',
+    order: 'score', minScore: null
+  };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const next = () => argv[++i];
@@ -58,10 +78,17 @@ function parseArgs(argv) {
     else if (a === '--min-chars') o.minChars = parseInt(next(), 10);
     else if (a === '--status') o.status = next();
     else if (a === '--host') o.host = next();
+    else if (a === '--order') o.order = next();
+    else if (a === '--min-score') o.minScore = parseFloat(next());
     else if (a === '--help' || a === '-h') o.help = true;
     else throw new Error(`Unknown argument: ${a}`);
   }
   if (Number.isNaN(o.limit) || o.limit < 0) throw new Error('--limit must be >= 0');
+  if (!ORDERINGS[o.order]) {
+    throw new Error(
+      `--order must be one of: ${Object.keys(ORDERINGS).join(', ')} (got "${o.order}")`
+    );
+  }
   return o;
 }
 
@@ -71,6 +98,8 @@ backfill-descriptions.mjs — fill applications.description for old rows
   --commit          actually write to Turso (default: dry run)
   --limit N         rows to attempt, 0 = no limit (default 50)
   --status S        only rows in this status (default 'found')
+  --order O         score | newest | oldest (default score - highest match first)
+  --min-score N     only rows with match_score >= N
   --host H          only rows whose URL host contains H
   --throttle MS     base per-host delay, jittered to 1-2x (default 5000)
   --timeout MS      per-request timeout (default 20000)
@@ -78,23 +107,39 @@ backfill-descriptions.mjs — fill applications.description for old rows
   --json            emit a JSON report on stdout
   -h, --help        this text
 
+Targets rows with no description, a too-short one, or one that is just the
+job title (the scraper's placeholder). Defaults to highest match_score first,
+so a bounded run covers the jobs actually worth applying to.
+
+  # the 200 best-matching jobs, dry run
+  node scripts/backfill-descriptions.mjs --limit 200 --order score
+
 Requires TURSO_URL and TURSO_TOKEN. Run the migration first:
   node scripts/add-description-column.mjs --confirm
 `.trim();
 
 async function fetchCandidates(env, o) {
+  const orderBy = ORDERINGS[o.order];
   const args = [o.status];
   let sql =
-    `SELECT id, company, title, url ` +
+    `SELECT id, company, title, url, match_score ` +
     `FROM applications ` +
     `WHERE status = ? ` +
     `  AND url IS NOT NULL AND url != '' ` +
-    `  AND (description IS NULL OR trim(description) = '') `;
+    // A title-only description is a placeholder, not a description — those
+    // rows still need backfilling. Matches the guard in generate.js.
+    `  AND (description IS NULL OR trim(description) = '' ` +
+    `       OR length(trim(description)) < ${MIN_REAL_DESCRIPTION_CHARS} ` +
+    `       OR lower(trim(description)) = lower(trim(title))) `;
   if (o.host) {
     sql += `  AND url LIKE ? `;
     args.push(`%${o.host}%`);
   }
-  sql += `ORDER BY id DESC`;
+  if (o.minScore !== null && !Number.isNaN(o.minScore)) {
+    sql += `  AND match_score >= ? `;
+    args.push(o.minScore);
+  }
+  sql += `ORDER BY ${orderBy}`;
   if (o.limit > 0) {
     sql += ` LIMIT ?`;
     args.push(o.limit);
@@ -200,8 +245,12 @@ async function main() {
           const r = await tursoExecute(
             env,
             `UPDATE applications SET description=?, updated_at=datetime('now') ` +
-            `WHERE id=? AND (description IS NULL OR trim(description)='')`,
-            [extracted, row.id]
+            // Mirrors the SELECT: fill empty, too-short, and title-only rows,
+            // but never clobber a description that is already a real body.
+            `WHERE id=? AND (description IS NULL OR trim(description)='' ` +
+            `                OR length(trim(description)) < ? ` +
+            `                OR lower(trim(description)) = lower(trim(title)))`,
+            [extracted, row.id, MIN_REAL_DESCRIPTION_CHARS]
           );
           written += r.affectedRowCount;
         } catch (err) {
