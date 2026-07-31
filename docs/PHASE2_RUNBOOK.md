@@ -90,6 +90,81 @@ continue.
 
 ## 3. Capture descriptions on the next scrape ← *the actual fix*
 
+> ### ⚠️ Known failure observed on 2026-07-31 — read this first
+>
+> A first attempt at this step ran and *looked* like it worked: the column
+> was populated, 141 rows had non-empty `summary`, and the row count grew
+> from 6595 to 6691. But **every populated row held the job title and
+> nothing else** — `summary` was exactly equal to `title` on 141 of 141
+> rows, mean length 32 chars, none longer than 85.
+>
+> That is this project's original bug wearing a disguise. Resumes were
+> still being generated from titles alone; the column just made it look
+> fixed.
+>
+> **Cause:** `job_hunt_daily.py` bound the title into the `description`
+> column — either the wrong variable in the args tuple, or jobspy returned
+> no description (because `description_format` was never requested) and a
+> fallback like `job.get("description") or job.get("title")` filled it in.
+>
+> **Check for it directly:**
+> ```bash
+> turso db shell morning-briefing \
+>   "SELECT COUNT(*) AS populated,
+>           SUM(CASE WHEN lower(trim(description))=lower(trim(title))
+>                    THEN 1 ELSE 0 END) AS title_only,
+>           SUM(CASE WHEN length(trim(description))>=200 THEN 1 ELSE 0 END) AS real_bodies
+>    FROM applications
+>    WHERE description IS NOT NULL AND trim(description) != ''"
+> ```
+> `title_only` must be ~0 and `real_bodies` must be most of `populated`.
+> `verify-goal.mjs` now enforces exactly this, so criterion 3 fails loudly
+> instead of passing on headline text. `generate.js` and
+> `sync_to_dashboard.py` also treat a title-only description as *absent*,
+> so a repeat of this cannot silently degrade a resume.
+>
+> ### Resolution (2026-07-31): descriptions are fetched on demand, not scraped
+>
+> The Pi session established the real cause, and it is upstream of the
+> INSERT: **the scraper never returns JD text at all.** The MCP
+> `scrape_jobs` tool emits a plain-text summary (Title/Company/Location/
+> URL/Posted) with no description field, even with
+> `description_format="markdown"`, so `parse_mcp_text` sets
+> `description = title`. `adzuna_scraper.py:124` hardcodes the same. The §3
+> patch was applied faithfully and *cannot* do better — no INSERT fix
+> conjures text that was never fetched.
+>
+> Getting real prose at scrape time would need a per-posting `fetch_job`
+> call: 140+ extra hits on LinkedIn/Indeed every night, which is exactly
+> the rate-limit exposure this project is avoiding.
+>
+> **So the JD is now fetched lazily in `/api/generate` instead** — one
+> request, only for a job you actually clicked Generate on, using the same
+> `functions/_lib/extract-jd.mjs` extractor as the backfill script. The
+> result is cached back into `description` (guarded so a real body is never
+> clobbered), so the next generate is instant and the nightly sync can
+> build a real summary from it. Every failure path — anti-bot wall, 404,
+> timeout, title-only page — degrades to the "no description captured"
+> prompt rather than failing the request.
+>
+> **What this means for the criteria:** criterion 3 no longer requires
+> descriptions to arrive from a scrape, only that real posting bodies
+> exist. Criterion 4 (bulk `jobs.json` summaries) stays largely unmet by
+> design — summaries appear for jobs you have generated materials for, and
+> grow over time, rather than all 6.6K rows at once.
+>
+> **Before re-running:** confirm jobspy is actually returning description
+> text, rather than assuming the INSERT is at fault:
+> ```python
+> jobs = scrape_jobs(..., description_format="markdown")
+> print(jobs[["title"]].head())
+> print(jobs["description"].str.len().describe())   # must NOT be all-NaN or tiny
+> ```
+> If lengths are NaN or near-zero, the problem is the scrape call (3a), not
+> the INSERT (3b). Fix that first — no amount of INSERT correction
+> conjures text that was never fetched.
+
+
 This is the step that satisfies "populated by a real `job_hunt_daily.py`
 run". Everything else is repair work.
 

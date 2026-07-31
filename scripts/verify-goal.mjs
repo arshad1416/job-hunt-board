@@ -75,7 +75,17 @@ async function checkCorsPinned(o) {
   return { pass: true, detail: 'unknown origin gets no ACAO; own origin echoed' };
 }
 
-/** 3. description column exists and a real run populated it. */
+/**
+ * 3. description column exists and a real run populated it with actual
+ *    posting bodies.
+ *
+ * "Populated" is not enough. A pipeline change once filled this column
+ * with the job title on every row: non-empty, recent, and completely
+ * useless — resumes were still being written from titles alone, which is
+ * the exact thing this project set out to fix. So the check also demands
+ * that the stored text is not merely the title and is long enough to be a
+ * posting body.
+ */
 async function checkDescriptionColumn(env) {
   if (!(await hasColumn(env, 'applications', 'description'))) {
     return { pass: false, detail: 'column missing — runbook §2 not applied' };
@@ -87,23 +97,64 @@ async function checkDescriptionColumn(env) {
                      THEN 1 ELSE 0 END) AS populated,
             SUM(CASE WHEN found_at >= datetime('now','-2 days')
                       AND description IS NOT NULL AND trim(description) != ''
-                     THEN 1 ELSE 0 END) AS recent
+                     THEN 1 ELSE 0 END) AS recent,
+            SUM(CASE WHEN description IS NOT NULL
+                      AND lower(trim(description)) = lower(trim(title))
+                     THEN 1 ELSE 0 END) AS title_only,
+            SUM(CASE WHEN description IS NOT NULL
+                      AND length(trim(description)) >= 200
+                     THEN 1 ELSE 0 END) AS substantial
      FROM applications`
   );
   const populated = s.populated || 0;
   if (populated === 0) {
     return { pass: false, detail: `column exists but 0 of ${s.total} rows populated — runbook §3 not done` };
   }
-  const recent = s.recent || 0;
+
+  const titleOnly = s.title_only || 0;
+  const substantial = s.substantial || 0;
+
+  // Recency-from-scrape is deliberately NOT required any more. The scraper
+  // cannot supply JD text at all (the MCP scrape_jobs tool returns a
+  // plain-text summary with no description field), so descriptions now
+  // arrive lazily from /api/generate — one fetch per job you actually
+  // generate materials for. What matters is that real posting bodies exist,
+  // not that they arrived on last night's run.
+  if (substantial === 0) {
+    return {
+      pass: false,
+      detail:
+        `${populated} rows populated but NONE are >=200 chars` +
+        (titleOnly ? `, and ${titleOnly} are exactly the job title` : '') +
+        ' — the column holds headlines, not posting bodies. Generate materials ' +
+        'for one job to pull a real JD, or see runbook §3.'
+    };
+  }
   return {
-    pass: recent > 0,
-    detail: recent > 0
-      ? `${populated} of ${s.total} populated, ${recent} from the last 2 days (a real run is writing them)`
-      : `${populated} of ${s.total} populated, but none in the last 2 days — likely backfill only, not a real job_hunt_daily.py run`
+    pass: true,
+    detail:
+      `${substantial} row(s) hold real posting bodies (>=200 chars) of ` +
+      `${populated} populated` +
+      (titleOnly ? `; ${titleOnly} are title-only placeholders from the scraper` : '') +
+      '. Descriptions arrive on demand at generate time — see runbook §3.'
   };
 }
 
-/** 4. jobs.json rows carry a non-empty summary. */
+/**
+ * 4. jobs.json rows carry a non-empty summary.
+ *
+ * A summary that merely repeats the job title does not count. On
+ * 2026-07-31 a sync produced 141 such rows and this check passed on them,
+ * reporting the goal met while every resume was still being written from
+ * a title — the same blind spot criterion 3 had. Both are closed now.
+ *
+ * Note on what "pass" can mean here. The scraper supplies no JD text, so
+ * descriptions arrive lazily from /api/generate, one job at a time. Full
+ * coverage of every row would need a per-posting fetch during the nightly
+ * run, which is ruled out on rate-limit grounds. So this reports real
+ * coverage honestly and passes once genuine summaries exist, rather than
+ * holding out for a total that cannot be reached.
+ */
 async function checkSummaries() {
   let data;
   try {
@@ -111,12 +162,39 @@ async function checkSummaries() {
   } catch (err) {
     return { pass: false, detail: `could not read data/jobs.json: ${err.message}` };
   }
+
   const jobs = data.jobs || [];
-  const withSummary = jobs.filter(j => (j.summary || '').trim()).length;
+  const norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+  const nonEmpty = jobs.filter(j => (j.summary || '').trim());
+  const titleEcho = nonEmpty.filter(j => norm(j.summary) === norm(j.title));
+  const real = nonEmpty.length - titleEcho.length;
+
+  if (nonEmpty.length === 0) {
+    return {
+      pass: false,
+      detail:
+        `0 of ${jobs.length} rows have a summary. Descriptions arrive when you ` +
+        'generate materials for a job; run scripts/backfill-descriptions.mjs ' +
+        '--limit 200 --order score to seed a shortlist up front.'
+    };
+  }
+  if (real === 0) {
+    return {
+      pass: false,
+      detail:
+        `${nonEmpty.length} of ${jobs.length} rows have a summary, but ALL of them ` +
+        'just repeat the job title — placeholders from the scraper, not real ' +
+        'summaries. See runbook §3.'
+    };
+  }
   return {
-    pass: withSummary > 0,
-    detail: `${withSummary} of ${jobs.length} rows have a non-empty summary` +
-      (withSummary === 0 ? ' — runbook §3 + §5 not done' : '')
+    pass: true,
+    detail:
+      `${real} of ${jobs.length} rows have a real summary` +
+      (titleEcho.length ? `; ${titleEcho.length} are title-echo placeholders` : '') +
+      '. Coverage grows as jobs are generated — full-table coverage is out of ' +
+      'scope by design (needs a per-posting fetch on every nightly run).'
   };
 }
 

@@ -15,12 +15,30 @@
 
 import { tursoQuery, tursoExecute } from '../_lib/turso.js';
 import { signedMaterialUrls } from '../_lib/signing.js';
+import { extractJobDescription } from '../_lib/extract-jd.mjs';
 
 const GLM_ENDPOINT = 'https://opencode.ai/zen/go/v1/chat/completions';
 const GLM_MODEL = 'glm-5.2';
 
 /** Upper bound on JD text sent to the model, in characters. */
 const MAX_JD_CHARS = 6000;
+
+/**
+ * Floor for what counts as a job description. Anything shorter is a
+ * headline, not a posting body — feeding it to the model as "the full job
+ * description" is worse than admitting we have none.
+ */
+const MIN_JD_CHARS = 120;
+
+/** Cap on what we write back to the description column. */
+const MAX_STORED_JD_CHARS = 20000;
+
+/** Budget for the on-demand JD fetch. Generation continues without it. */
+const JD_FETCH_TIMEOUT_MS = 10000;
+
+const JD_FETCH_UA =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 ' +
+  '(KHTML, like Gecko) Chrome/125.0 Safari/537.36';
 
 // ── Candidate profile (embedded — same as Pi-side resume_profile.yaml) ──
 const CANDIDATE_PROFILE = `
@@ -47,11 +65,40 @@ bilingual (English/Hindi/Urdu), willing to relocate or travel extensively.
 
 // ── Job description handling ──
 
+/** Casefold + strip punctuation/whitespace, for comparing text for sameness. */
+function normalizeForCompare(s) {
+  return String(s || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+/**
+ * True when the stored "description" merely restates the job title and
+ * carries no posting body.
+ *
+ * This is a real failure mode, not a hypothetical: a pipeline change once
+ * wired the title into the description column, and every row looked
+ * populated while carrying nothing a resume could be tailored to. Passing
+ * that to the model labelled "FULL JOB DESCRIPTION — source of truth" is
+ * actively misleading, so it is treated as absent.
+ */
+function isTitleOnly(description, title) {
+  const d = normalizeForCompare(description);
+  const t = normalizeForCompare(title);
+  if (!d) return true;
+  if (!t) return false;
+  if (d === t) return true;
+  // A handful of extra words around the title is still a headline.
+  if (d.includes(t) && d.length - t.length < 20) return true;
+  return false;
+}
+
 /**
  * The verbatim JD body, trimmed and length-capped.
  * `description` is the real posting text captured by job_hunt_daily.py.
- * `notes` is the pipeline's pipe-delimited salary/summary line — a poor
- * substitute, but better than nothing on rows predating the column.
+ * Returns null when the column holds nothing usable — empty, a bare title,
+ * or too short to be a posting body.
  * @returns {string|null} JD text, or null when nothing usable exists
  */
 function jobDescriptionText(job) {
@@ -59,6 +106,8 @@ function jobDescriptionText(job) {
   if (!raw) return null;
   const clean = raw.replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
   if (!clean) return null;
+  if (clean.length < MIN_JD_CHARS) return null;
+  if (isTitleOnly(clean, job.title)) return null;
   return clean.length > MAX_JD_CHARS
     ? clean.slice(0, MAX_JD_CHARS).trimEnd() + '\n\n[… description truncated]'
     : clean;
@@ -83,6 +132,46 @@ FULL JOB DESCRIPTION: not captured for this posting.
 Work only from the fields above. Do NOT invent requirements, tools, or
 responsibilities that are not stated.
 `;
+}
+
+/**
+ * Fetch the posting page and pull out its body.
+ *
+ * The scraper cannot supply this: the MCP `scrape_jobs` tool returns a
+ * plain-text summary with no description field, so the pipeline stores the
+ * title. Rather than adding a per-posting call to the nightly run — 140+
+ * extra hits on LinkedIn/Indeed every night, which is exactly the
+ * rate-limit exposure we are avoiding — the JD is fetched lazily here:
+ * once, only for a job you actually clicked Generate on.
+ *
+ * Every failure path returns null and generation proceeds without a JD.
+ * @returns {Promise<string|null>}
+ */
+async function fetchJobDescription(url) {
+  if (!url || !/^https?:\/\//i.test(String(url))) return null;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), JD_FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(String(url), {
+      redirect: 'follow',
+      signal: controller.signal,
+      headers: {
+        'User-Agent': JD_FETCH_UA,
+        Accept: 'text/html,application/xhtml+xml',
+        'Accept-Language': 'en-CA,en;q=0.9'
+      }
+    });
+    if (!res.ok) return null;
+    const html = (await res.text()).slice(0, 500000);
+    const hit = extractJobDescription(html);
+    return hit ? hit.text : null;
+  } catch {
+    // Timeout, DNS failure, anti-bot wall — all mean "no JD", not "fail".
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 // ── Prompt templates ──
@@ -247,6 +336,34 @@ export async function onRequestPost(context) {
     }
   }
 
+  // ── 3b. Fetch the JD on demand if the stored one is unusable ──
+  // The pipeline can only store the title, so this is where real posting
+  // text actually enters the system. One request, for this job only.
+  let jdSource = jobDescriptionText(job) ? 'stored' : 'unavailable';
+  if (jdSource === 'unavailable' && job.url) {
+    const fetched = await fetchJobDescription(job.url);
+    if (fetched && fetched.length >= MIN_JD_CHARS && !isTitleOnly(fetched, job.title)) {
+      job.description = fetched.slice(0, MAX_STORED_JD_CHARS);
+      jdSource = 'fetched';
+
+      // Cache it back so the next generate is instant and the nightly sync
+      // can build a real summary from it. Guarded so a genuine stored body
+      // is never clobbered — this only fills empty or title-only rows.
+      try {
+        await tursoExecute(
+          env,
+          "UPDATE applications SET description=?, updated_at=datetime('now') " +
+          "WHERE id=? AND (description IS NULL OR trim(description)='' " +
+          "                OR length(trim(description)) < ?)",
+          [job.description, jobId, MIN_JD_CHARS]
+        );
+      } catch (err) {
+        // Non-fatal: we still have the text in memory for this generation.
+        console.error('JD cache write failed:', err);
+      }
+    }
+  }
+
   // ── 4. Call GLM-5.2 for resume + cover letter ──
   let resumeMd, coverMd;
   try {
@@ -274,6 +391,10 @@ export async function onRequestPost(context) {
       // Record what the model actually saw, so a weak resume can be traced
       // back to a missing or truncated JD rather than guessed at.
       description_used: !!jd,
+      // 'stored'      — the pipeline had a usable body
+      // 'fetched'     — pulled from the posting URL during this request
+      // 'unavailable' — no usable JD; the prompt said so rather than guessing
+      description_source: jdSource,
       description: jd,
       generated_at: new Date().toISOString()
     }, null, 2);
