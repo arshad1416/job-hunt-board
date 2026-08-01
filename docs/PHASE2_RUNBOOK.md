@@ -529,3 +529,54 @@ Recorded so the next run doesn't relearn them the hard way.
   `found_at >= now-2days`. Today's real run refilled it; the cron is Mon–Fri, so
   it self-heals each weekday but can read red over the weekend gap until Monday's
   run. A red criterion 3 on a Saturday is expected, not a regression.
+
+  **Superseded 2026-08-01** — this no longer holds. `checkDescriptionColumn`
+  still *computes* a `recent` count, but the pass predicate is `substantial > 0`
+  (any description ≥200 chars) with no recency term at all; the comment above it
+  says recency-from-scrape is deliberately not required, since the scraper
+  cannot supply JD text. Practical consequence: the §4 backfill **is** a valid
+  way to turn criterion 3 green, and there is no weekend regression. Read the
+  predicate, not the prose.
+
+---
+
+## 10. Corrections from the completion session (2026-08-01)
+
+Reached **7 of 7**, `verify-goal.mjs` exit 0, confirmed against live production.
+What this run cost, that the runbook did not warn about:
+
+- **A stale checkout reports a confident, wrong PASS.** The Pi clone was 9
+  commits behind and its `verify-goal.mjs` printed **7 of 7**. It was false:
+  PR #3 (`c2ace80`) had closed a blind spot where a `summary` exactly equal to
+  the job title counted as real, and the old copy still passed on those 141
+  placeholder rows. After `git pull --ff-only`, the identical command honestly
+  reported **5 of 7**. **`git pull` before you trust any verify output** — a
+  green check from an old checkout is checking an old contract, and this
+  particular one certifies the exact bug the project exists to fix.
+
+- **`sync_to_dashboard.py` exists twice and the cron uses the copy §5 does not
+  touch by default.** The Pi runs `~/.hermes/scripts/sync_to_dashboard.py`; the
+  repo has its own. They are not symlinked. Only the repo copy carries
+  `MIN_DESCRIPTION_CHARS` and `is_title_only()`, which is what lets a real
+  summary be derived and a title-echo be rejected. **Until you actually perform
+  §5's `cp`, criterion 4 cannot go green** regardless of how many genuine
+  descriptions reach Turso — the sync will keep re-emitting title echoes. §9
+  never recorded doing it, so assume it has not been done.
+
+- **Do not run `scripts/run-phase2.sh` over non-interactive SSH.** Its
+  `confirm()` reads from stdin via `read -rp`. With no TTY, `read` hits EOF, the
+  reply stays empty, and **every write step silently skips** — and since the
+  script sets `-uo pipefail` but not `-e`, it continues and still prints a final
+  verify. The run looks like it happened and changed nothing. Either run it on a
+  real terminal, or call `check-liveness.mjs` / `backfill-descriptions.mjs`
+  directly with an explicit `--commit`, which is what this session did. `--yes`
+  works but also auto-approves the production push.
+
+- **Backfill economics, measured.** `--limit 50 --order score` extracted **18 of
+  50** (~36%), bodies 1.8K–10.5K chars — enough to satisfy criteria 3 and 4 in
+  one pass. `ca.indeed.com` blocked 5× and was abandoned mid-run, as designed.
+
+- **The full liveness pass is not on the critical path.** Criterion 6 was
+  already green at 45 expired rows. The remaining 1 894-row window is 4–5 hours
+  and moves no criterion; run it as cleanup if you want a tidier board, not as
+  part of reaching the goal.
