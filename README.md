@@ -89,9 +89,10 @@ If `DASHBOARD_AUTH_TOKEN` is unset on the server, every non-public route fails c
 - **Auth:** `Authorization: Bearer <TURSO_TOKEN>`
 - **Table:** `applications` (schema in [ARCHITECTURE_PLAN.md](./ARCHITECTURE_PLAN.md) §5.1)
 - The `applications` table uses `found_at` for posted date and now has an
-  additive `description` column. Genuine descriptions are fetched on demand at
-  generate time and cached; `sync_to_dashboard.py` derives the short dashboard
-  summary from that body, with legacy `notes` as a fallback.
+  additive `description` column. Structured ingestion stores genuine bodies
+  when the search source provides them; missing bodies are resolved and cached
+  on demand. `sync_to_dashboard.py` derives the short dashboard summary from
+  that body, with legacy `notes` as a fallback.
 
 ### OpenCode Go API (GLM-5.2)
 
@@ -263,7 +264,7 @@ Written daily by the Pi's `sync_to_dashboard.py`:
 >
 > `description` **is** an `applications` column as of `migrations/001_add_description_column.sql`, and `/api/generate` sends it to GLM-5.2 so resumes are written from the posting text rather than the job title.
 >
-> **Descriptions are fetched on demand, not scraped.** The MCP `scrape_jobs` tool returns a plain-text summary with no description field, so the pipeline can only store the job title. Rather than adding a per-posting `fetch_job` call to the nightly run — 140+ extra hits on LinkedIn/Indeed every night — `/api/generate` fetches the posting URL once, for the job you actually clicked Generate on, extracts the body via `functions/_lib/extract-jd.mjs`, and caches it back into `description`. A description that merely restates the title, or is under 120 chars, is treated as **absent**: handing the model a headline labelled "source of truth" invites fabrication.
+> **Descriptions and canonical URLs are captured without a per-posting board crawl.** `scripts/jobspy_json.mjs` calls jobspy's structured API instead of its lossy MCP summary, preserving the description and `job_url_direct` fields already present in search results. The employer/ATS URL is promoted over the LinkedIn/Indeed URL and known Recruitics tracking hops are removed. LinkedIn's optional per-result description request stays off by default because it is the block-prone path. When a description is still missing, `/api/generate` tries the posting's public Greenhouse, Lever, Workday, or SmartRecruiters endpoint first, then performs one bounded HTML fetch and caches the result. A title echo or text under 120 characters is treated as absent.
 >
 > `jobs.json` deliberately ships only a ≤200-char excerpt in `summary`/`description`, plus a `has_description` boolean. At ~6.6K rows the full JD text would add tens of MB to a file the browser downloads whole; the full text stays in Turso where the API reads it. Summaries were empty on every row until this landed, because the old code derived them solely from a `Summary:` fragment in `notes` that the pipeline never wrote.
 
@@ -276,8 +277,9 @@ Zero-dependency Node 18+ (global `fetch`), run from the Pi. **All are dry-run by
 | Script | Purpose |
 |---|---|
 | `scripts/add-description-column.mjs` | Applies the additive `description` migration. Idempotent — checks `PRAGMA table_info` first and re-counts rows after. |
-| `scripts/check-liveness.mjs` | Marks dead postings `expired`. Three-way verdict; **`uncertain` is never written**, so an anti-bot wall can't cost you a live posting. Sequential with a jittered 5–10s per-host delay. |
-| `scripts/backfill-descriptions.mjs` | Best-effort repair of rows predating the column. Secondary to capturing descriptions at scrape time. |
+| `scripts/jobspy_json.mjs` | Structured ingestion bridge. Preserves descriptions and employer URLs without enabling per-result LinkedIn detail requests. |
+| `scripts/check-liveness.mjs` | Marks dead postings `expired`. Public ATS API first, HTML second; **`uncertain` is never written**, so an access wall cannot cost you a live posting. |
+| `scripts/backfill-descriptions.mjs` | Repairs old rows through public ATS APIs first, with the existing bounded HTML fallback. |
 | `scripts/verify-goal.mjs` | **Read-only.** Checks all seven success criteria against live Turso and the live site; exits non-zero until every one holds. |
 
 ```bash
@@ -286,7 +288,7 @@ node scripts/check-liveness.mjs --limit 50            # dry run
 node scripts/check-liveness.mjs --limit 50 --commit   # apply
 ```
 
-Liveness detection is modelled on [santifer/career-ops](https://github.com/santifer/career-ops) `check-liveness.mjs`, minus Playwright — the Pi runs a Python pipeline and this repo has no build step.
+The API-first provider and three-way liveness strategy are adapted from [santifer/career-ops](https://github.com/santifer/career-ops). This repo keeps the core path zero-dependency: recognized employer ATS endpoints are preferred, and blocked board responses remain `uncertain`.
 
 ---
 

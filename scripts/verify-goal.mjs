@@ -114,12 +114,10 @@ async function checkDescriptionColumn(env) {
   const titleOnly = s.title_only || 0;
   const substantial = s.substantial || 0;
 
-  // Recency-from-scrape is deliberately NOT required any more. The scraper
-  // cannot supply JD text at all (the MCP scrape_jobs tool returns a
-  // plain-text summary with no description field), so descriptions now
-  // arrive lazily from /api/generate — one fetch per job you actually
-  // generate materials for. What matters is that real posting bodies exist,
-  // not that they arrived on last night's run.
+  // Recency is deliberately not required. Structured ingestion now preserves
+  // descriptions when the source supplies them, while older rows and sources
+  // without a body are filled lazily. What matters here is that genuine
+  // posting bodies exist, not which safe retrieval layer supplied them.
   if (substantial === 0) {
     return {
       pass: false,

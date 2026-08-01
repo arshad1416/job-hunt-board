@@ -2,9 +2,9 @@
 /**
  * check-liveness.mjs — mark dead job postings 'expired' in Turso.
  *
- * Modelled on santifer/career-ops check-liveness.mjs, minus Playwright:
- * the Pi runs a Python pipeline and this repo has no build step, so this is
- * a zero-dependency Node 18+ script using global fetch.
+ * Modelled on santifer/career-ops check-liveness.mjs. Its API-first provider
+ * strategy is used for recognized ATS links; the fallback remains a
+ * zero-dependency Node 18+ fetch so the Pi needs no browser crawl.
  *
  * Safety posture, in order of importance:
  *   1. DRY RUN BY DEFAULT. Writing to Turso needs an explicit --commit.
@@ -30,6 +30,8 @@ import { acquireFetchLock } from './lib/lock.mjs';
 import {
   classify, jitteredDelayMs, sleep, ACTIVE, EXPIRED, UNCERTAIN
 } from './lib/liveness.mjs';
+import { fetchPublicAtsJob } from '../functions/_lib/public-ats.mjs';
+import { isSafePublicHttpUrl } from '../functions/_lib/job-url.mjs';
 
 const UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 ' +
@@ -109,21 +111,37 @@ async function fetchCandidates(env, o) {
 }
 
 async function probe(url, timeoutMs) {
+  if (!isSafePublicHttpUrl(url)) {
+    return { status: 0, finalUrl: url, body: '', networkError: 'unsafe or invalid URL' };
+  }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(url, {
-      redirect: 'follow',
-      signal: controller.signal,
-      headers: {
-        'User-Agent': UA,
-        Accept: 'text/html,application/xhtml+xml',
-        'Accept-Language': 'en-CA,en;q=0.9'
+    let currentUrl = url;
+    let res;
+    for (let hop = 0; hop <= 3; hop++) {
+      if (!isSafePublicHttpUrl(currentUrl)) {
+        return { status: 0, finalUrl: currentUrl, body: '', networkError: 'redirected to an unsafe URL' };
       }
-    });
+      res = await fetch(currentUrl, {
+        redirect: 'manual',
+        signal: controller.signal,
+        headers: {
+          'User-Agent': UA,
+          Accept: 'text/html,application/xhtml+xml',
+          'Accept-Language': 'en-CA,en;q=0.9'
+        }
+      });
+      if (res.status < 300 || res.status >= 400) break;
+      const location = res.headers.get('location');
+      if (!location || hop === 3) {
+        return { status: res.status, finalUrl: currentUrl, body: '', networkError: 'redirect limit reached' };
+      }
+      currentUrl = new URL(location, currentUrl).href;
+    }
     // Cap the read: some postings are megabytes and we only need the copy.
     const body = (await res.text().catch(() => '')).slice(0, 200000);
-    return { status: res.status, finalUrl: res.url || url, body };
+    return { status: res.status, finalUrl: currentUrl, body };
   } catch (err) {
     const reason = err.name === 'AbortError' ? 'timeout' : err.message;
     return { status: 0, finalUrl: url, body: '', networkError: reason };
@@ -185,10 +203,18 @@ async function main() {
       continue;
     }
 
-    const res = await probe(row.url, o.timeoutMs);
-    const verdict = res.networkError
-      ? { result: UNCERTAIN, reason: `network: ${res.networkError}` }
-      : classify({ requestUrl: row.url, finalUrl: res.finalUrl, status: res.status, body: res.body });
+    const ats = await fetchPublicAtsJob(row.url, { timeoutMs: o.timeoutMs });
+    let verdict;
+    if (ats.ok) {
+      verdict = { result: ACTIVE, reason: `${ats.provider} public API returned the posting` };
+    } else if (ats.supported && (ats.status === 404 || ats.status === 410)) {
+      verdict = { result: EXPIRED, reason: `${ats.provider} public API returned HTTP ${ats.status}` };
+    } else {
+      const res = await probe(row.url, o.timeoutMs);
+      verdict = res.networkError
+        ? { result: UNCERTAIN, reason: `network: ${res.networkError}` }
+        : classify({ requestUrl: row.url, finalUrl: res.finalUrl, status: res.status, body: res.body });
+    }
 
     counts[verdict.result]++;
     report.push({ id: row.id, url: row.url, company: row.company, title: row.title, ...verdict });

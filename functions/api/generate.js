@@ -16,6 +16,8 @@
 import { tursoQuery, tursoExecute } from '../_lib/turso.js';
 import { signedMaterialUrls } from '../_lib/signing.js';
 import { extractJobDescription } from '../_lib/extract-jd.mjs';
+import { fetchPublicAtsJob } from '../_lib/public-ats.mjs';
+import { isSafePublicHttpUrl } from '../_lib/job-url.mjs';
 
 const GLM_ENDPOINT = 'https://opencode.ai/zen/go/v1/chat/completions';
 const GLM_MODEL = 'glm-5.2';
@@ -137,31 +139,50 @@ responsibilities that are not stated.
 /**
  * Fetch the posting page and pull out its body.
  *
- * The scraper cannot supply this: the MCP `scrape_jobs` tool returns a
- * plain-text summary with no description field, so the pipeline stores the
- * title. Rather than adding a per-posting call to the nightly run — 140+
- * extra hits on LinkedIn/Indeed every night, which is exactly the
- * rate-limit exposure we are avoiding — the JD is fetched lazily here:
- * once, only for a job you actually clicked Generate on.
+ * Structured ingestion normally supplies this. When it does not (LinkedIn's
+ * block-prone per-posting detail request is intentionally disabled), fetch it
+ * lazily: once, only for a job the user actually clicked Generate on. Public
+ * ATS JSON is attempted before HTML.
  *
  * Every failure path returns null and generation proceeds without a JD.
  * @returns {Promise<string|null>}
  */
 async function fetchJobDescription(url) {
-  if (!url || !/^https?:\/\//i.test(String(url))) return null;
+  if (!isSafePublicHttpUrl(url)) return null;
+
+  // API-first: if ingestion stored the employer's Greenhouse, Lever, Workday,
+  // or SmartRecruiters URL, read the public posting endpoint. This avoids a
+  // follow-up request to the board that discovered the job.
+  const ats = await fetchPublicAtsJob(String(url), {
+    timeoutMs: JD_FETCH_TIMEOUT_MS
+  });
+  if (ats.ok && ats.job.description.length >= MIN_JD_CHARS) {
+    return ats.job.description.slice(0, MAX_STORED_JD_CHARS);
+  }
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), JD_FETCH_TIMEOUT_MS);
   try {
-    const res = await fetch(String(url), {
-      redirect: 'follow',
-      signal: controller.signal,
-      headers: {
-        'User-Agent': JD_FETCH_UA,
-        Accept: 'text/html,application/xhtml+xml',
-        'Accept-Language': 'en-CA,en;q=0.9'
-      }
-    });
+    let currentUrl = String(url);
+    let res;
+    // Validate every redirect rather than allowing a stored URL to bounce the
+    // Worker to loopback/private infrastructure.
+    for (let hop = 0; hop <= 3; hop++) {
+      if (!isSafePublicHttpUrl(currentUrl)) return null;
+      res = await fetch(currentUrl, {
+        redirect: 'manual',
+        signal: controller.signal,
+        headers: {
+          'User-Agent': JD_FETCH_UA,
+          Accept: 'text/html,application/xhtml+xml',
+          'Accept-Language': 'en-CA,en;q=0.9'
+        }
+      });
+      if (res.status < 300 || res.status >= 400) break;
+      const location = res.headers.get('location');
+      if (!location || hop === 3) return null;
+      currentUrl = new URL(location, currentUrl).href;
+    }
     if (!res.ok) return null;
     const html = (await res.text()).slice(0, 500000);
     const hit = extractJobDescription(html);
