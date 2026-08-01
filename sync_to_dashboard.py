@@ -234,32 +234,106 @@ def transform_job(row: dict) -> dict:
 
 # ── Git operations ───────────────────────────────────────────────────────────
 def git_push(repo_path: Path, message: str) -> bool:
-    """Pull rebase, commit, then push to main AND master."""
+    """Pull, commit only jobs.json, then push to main AND master.
+
+    The Pi clone is also a working repository. Never sweep unrelated staged,
+    modified, or untracked files into the automated daily data commit.
+    """
     try:
-        # Pull --rebase first to avoid divergence (Mac may have pushed changes)
+        # jobs.json was written immediately before this call. Refuse to touch a
+        # worktree with any *other* tracked changes; untracked user files are
+        # intentionally ignored and left alone.
+        status = subprocess.run(
+            [
+                "git", "-C", str(repo_path), "status", "--porcelain",
+                "--untracked-files=no",
+            ],
+            capture_output=True, text=True, timeout=30, check=True,
+        )
+        unrelated = [
+            line for line in status.stdout.splitlines()
+            if not line.endswith(" data/jobs.json")
+        ]
+        if unrelated:
+            print(
+                "[sync] Refusing automated commit: unrelated tracked changes "
+                "are present:\n" + "\n".join(f"  {line}" for line in unrelated),
+                file=sys.stderr,
+            )
+            return False
+
+        # Pull --rebase first to avoid divergence (another machine may have
+        # pushed changes). --autostash carries the freshly written jobs.json
+        # across the pull without including untracked files.
         pull = subprocess.run(
-            ["git", "-C", str(repo_path), "pull", "--rebase", "origin", "main"],
-            capture_output=True, timeout=60,
+            [
+                "git", "-C", str(repo_path), "pull", "--rebase", "--autostash",
+                "origin", "main",
+            ],
+            capture_output=True, text=True, timeout=60,
         )
         if pull.returncode != 0:
             print(f"[sync] Git pull --rebase output: {pull.stdout[:200]}")
             print(f"[sync] Git pull --rebase errors: {pull.stderr[:200]}")
-            print("[sync] Continuing despite pull issue...")
+            print("[sync] Stopping before commit because the pull failed.", file=sys.stderr)
+            return False
 
-        subprocess.run(["git", "-C", str(repo_path), "add", "-A"],
-                       capture_output=True, timeout=30, check=True)
-        subprocess.run(["git", "-C", str(repo_path), "commit", "-m", message],
-                       capture_output=True, timeout=30)
+        unmerged = subprocess.run(
+            [
+                "git", "-C", str(repo_path), "diff", "--name-only",
+                "--diff-filter=U", "--", "data/jobs.json",
+            ],
+            capture_output=True, text=True, timeout=30, check=True,
+        )
+        if unmerged.stdout.strip():
+            print(
+                "[sync] jobs.json conflicted while applying the pull autostash; "
+                "resolve it manually before syncing again.",
+                file=sys.stderr,
+            )
+            return False
+
+        subprocess.run(
+            ["git", "-C", str(repo_path), "add", "--", "data/jobs.json"],
+            capture_output=True, text=True, timeout=30, check=True,
+        )
+        changed = subprocess.run(
+            [
+                "git", "-C", str(repo_path), "diff", "--cached", "--quiet",
+                "--", "data/jobs.json",
+            ],
+            capture_output=True, text=True, timeout=30,
+        )
+        if changed.returncode == 1:
+            commit = subprocess.run(
+                [
+                    "git", "-C", str(repo_path), "commit", "--only", "-m",
+                    message, "--", "data/jobs.json",
+                ],
+                capture_output=True, text=True, timeout=30,
+            )
+            if commit.returncode != 0:
+                print(f"[sync] Git commit output: {commit.stdout[:200]}")
+                print(f"[sync] Git commit errors: {commit.stderr[:200]}")
+                return False
+        elif changed.returncode == 0:
+            print("[sync] data/jobs.json is unchanged; no commit needed")
+        else:
+            print("[sync] Could not inspect the staged jobs.json change", file=sys.stderr)
+            return False
+
         r1 = subprocess.run(["git", "-C", str(repo_path), "push", "origin", "main"],
-                            capture_output=True, timeout=60)
+                            capture_output=True, text=True, timeout=60)
         r2 = subprocess.run(["git", "-C", str(repo_path), "push", "origin", "main:master"],
-                            capture_output=True, timeout=60)
-        if r1.returncode == 0 or r2.returncode == 0:
+                            capture_output=True, text=True, timeout=60)
+        if r1.returncode == 0 and r2.returncode == 0:
             print(f"[sync] Git push to main + master successful")
             return True
         else:
-            print(f"[sync] Git push output: {r2.stdout[:200]}")
-            print(f"[sync] Git push errors: {r2.stderr[:200]}")
+            print(f"[sync] Git push main output: {r1.stdout[:200]}")
+            print(f"[sync] Git push main errors: {r1.stderr[:200]}")
+            print(f"[sync] Git push master output: {r2.stdout[:200]}")
+            print(f"[sync] Git push master errors: {r2.stderr[:200]}")
             return False
     except subprocess.TimeoutExpired:
         print("[sync] Git push timed out", file=sys.stderr)
@@ -270,7 +344,7 @@ def git_push(repo_path: Path, message: str) -> bool:
 
 
 # ── Main ─────────────────────────────────────────────────────────────────────
-def main():
+def main() -> int:
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
     # 1. Fetch jobs
@@ -280,7 +354,7 @@ def main():
 
     if not rows:
         print("[sync] No jobs to sync")
-        return
+        return 0
 
     # 2. Transform
     jobs = [transform_job(r) for r in rows]
@@ -290,7 +364,7 @@ def main():
         print(f"[sync] Repo not found at {DASHBOARD_REPO_PATH}. Skipping git push.")
         print(f"[sync] Outputting jobs.json to stdout for manual sync:")
         print(json.dumps({"jobs": jobs, "meta": {"updated": today, "count": len(jobs)}}, indent=2))
-        return
+        return 1
 
     # 4. Write jobs.json
     DASHBOARD_DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -311,9 +385,11 @@ def main():
     commit_msg = f"chore: daily job data update for {today}"
     if git_push(DASHBOARD_REPO_PATH, commit_msg):
         print(f"[sync] ✅ Dashboard updated and deployed")
+        return 0
     else:
         print(f"[sync] ⚠️  Data written but git push had issues")
+        return 1
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

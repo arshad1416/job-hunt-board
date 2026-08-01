@@ -88,7 +88,10 @@ If `DASHBOARD_AUTH_TOKEN` is unset on the server, every non-public route fails c
 - **Endpoint:** `https://morning-briefing-arshad1416.aws-us-east-1.turso.io/v2/pipeline`
 - **Auth:** `Authorization: Bearer <TURSO_TOKEN>`
 - **Table:** `applications` (schema in [ARCHITECTURE_PLAN.md](./ARCHITECTURE_PLAN.md) §5.1)
-- The `applications` table has `found_at` and `notes` columns (no `posted_at` or `description`). The frontend derives posted date from `found_at` and summary from `notes` when `posted_date`/`summary` are absent in `jobs.json`.
+- The `applications` table uses `found_at` for posted date and now has an
+  additive `description` column. Genuine descriptions are fetched on demand at
+  generate time and cached; `sync_to_dashboard.py` derives the short dashboard
+  summary from that body, with legacy `notes` as a fallback.
 
 ### OpenCode Go API (GLM-5.2)
 
