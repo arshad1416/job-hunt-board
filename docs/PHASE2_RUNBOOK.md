@@ -378,9 +378,9 @@ for each, exiting non-zero until all seven hold:
 
 1. materials not served to unauthenticated enumeration (5 job_ids, expects `401`)
 2. CORS pinned — unknown origin gets no `ACAO`, own origin still allowed
-3. `applications.description` exists **and** has rows from the last 2 days
-   (so a backfill alone doesn't pass it off as a real scrape)
-4. `data/jobs.json` rows have a non-empty summary
+3. `applications.description` exists and at least one row contains a genuine
+   posting body (≥200 chars, not a title-only placeholder)
+4. `data/jobs.json` contains at least one genuine, non-title-echo summary
 5. `generate.js` interpolates the JD into both prompts
 6. rows have actually moved to `expired`
 7. `jobs.json` is fresh and `/api/health` reports `configured`
@@ -563,6 +563,10 @@ What this run cost, that the runbook did not warn about:
   descriptions reach Turso — the sync will keep re-emitting title echoes. §9
   never recorded doing it, so assume it has not been done.
 
+  **Resolved after handoff:** `run-phase2.sh` now compares the two copies,
+  creates a timestamped backup, and installs the repo copy before syncing. It
+  refuses to run a differing cron copy unless that installation is approved.
+
 - **Do not run `scripts/run-phase2.sh` over non-interactive SSH.** Its
   `confirm()` reads from stdin via `read -rp`. With no TTY, `read` hits EOF, the
   reply stays empty, and **every write step silently skips** — and since the
@@ -571,6 +575,11 @@ What this run cost, that the runbook did not warn about:
   real terminal, or call `check-liveness.mjs` / `backfill-descriptions.mjs`
   directly with an explicit `--commit`, which is what this session did. `--yes`
   works but also auto-approves the production push.
+
+  **Resolved after handoff:** interactive mode now fails immediately when stdin
+  is not a TTY, every fetch step propagates failures, and `--yes` remains the
+  explicit non-interactive path. The sync script also returns non-zero when its
+  commit or either branch push fails.
 
 - **Backfill economics, measured.** `--limit 50 --order score` extracted **18 of
   50** (~36%), bodies 1.8K–10.5K chars — enough to satisfy criteria 3 and 4 in

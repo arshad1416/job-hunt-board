@@ -1,5 +1,10 @@
 # Handoff brief — for a Claude Code session running on the Pi
 
+> **Archived:** this handoff was completed on 2026-08-01. Production reached
+> 7 of 7 criteria; all related PRs were merged. Do not execute the starting
+> instructions below as a current recovery plan. The final production findings
+> and any optional cleanup are recorded in `docs/PHASE2_RUNBOOK.md` §10.
+
 Hand this file to a session that has the Pi's filesystem and network. It is
 self-contained: assume the reader has no prior context.
 
