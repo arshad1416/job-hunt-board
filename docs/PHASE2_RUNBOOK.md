@@ -123,7 +123,7 @@ continue.
 > `sync_to_dashboard.py` also treat a title-only description as *absent*,
 > so a repeat of this cannot silently degrade a resume.
 >
-> ### Resolution (2026-07-31): descriptions are fetched on demand, not scraped
+> ### Historical resolution (2026-07-31), superseded 2026-08-01
 >
 > The Pi session established the real cause, and it is upstream of the
 > INSERT: **the scraper never returns JD text at all.** The MCP
@@ -163,6 +163,13 @@ continue.
 > If lengths are NaN or near-zero, the problem is the scrape call (3a), not
 > the INSERT (3b). Fix that first — no amount of INSERT correction
 > conjures text that was never fetched.
+>
+> **Current implementation:** `scripts/jobspy_json.mjs` calls jobspy's
+> structured library API and preserves fields its MCP formatter omitted. New
+> Indeed rows therefore arrive with their JD and employer URL without extra
+> detail-page requests. LinkedIn detail fetching stays disabled by default;
+> missing text is resolved through a recognized public ATS API when possible,
+> then by one bounded on-demand HTML fetch. See README “Maintenance Scripts.”
 
 
 This is the step that satisfies "populated by a real `job_hunt_daily.py`
@@ -533,8 +540,8 @@ Recorded so the next run doesn't relearn them the hard way.
   **Superseded 2026-08-01** — this no longer holds. `checkDescriptionColumn`
   still *computes* a `recent` count, but the pass predicate is `substantial > 0`
   (any description ≥200 chars) with no recency term at all; the comment above it
-  says recency-from-scrape is deliberately not required, since the scraper
-  cannot supply JD text. Practical consequence: the §4 backfill **is** a valid
+  says recency-from-scrape is deliberately not required. Practical
+  consequence: the §4 backfill **is** a valid
   way to turn criterion 3 green, and there is no weekend regression. Read the
   predicate, not the prose.
 

@@ -8,12 +8,11 @@
  * for. Use this to fill a bounded shortlist up front instead, e.g. the
  * best-matching few hundred rows.
  *
- * The scraper cannot supply descriptions at all (the MCP scrape_jobs tool
- * returns no description field), so it stores the job title as a
- * placeholder. Those rows count as needing a backfill here.
+ * Older MCP-ingested rows have only a title placeholder. The structured
+ * jobspy bridge fixes new rows; this script repairs the older set through a
+ * recognized public ATS endpoint first and bounded HTML second.
  *
- * Expect a low hit rate: LinkedIn and Indeed wall headless requests, and a
- * walled page yields no description at all.
+ * Board URLs can still have a low hit rate. Employer/ATS URLs avoid that path.
  *
  * Same safety posture as check-liveness.mjs:
  *   - DRY RUN BY DEFAULT; writing needs --commit
@@ -37,6 +36,8 @@ import { jitteredDelayMs, sleep } from './lib/liveness.mjs';
 // Node can import the same file (a plain .js would load as CommonJS here,
 // and adding a package.json would give this repo a build step it must not have).
 import { extractJobDescription } from '../functions/_lib/extract-jd.mjs';
+import { fetchPublicAtsJob } from '../functions/_lib/public-ats.mjs';
+import { isSafePublicHttpUrl } from '../functions/_lib/job-url.mjs';
 
 const UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 ' +
@@ -151,20 +152,36 @@ async function fetchCandidates(env, o) {
 }
 
 async function fetchHtml(url, timeoutMs) {
+  if (!isSafePublicHttpUrl(url)) {
+    return { status: 0, body: '', error: 'unsafe or invalid URL' };
+  }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(url, {
-      redirect: 'follow',
-      signal: controller.signal,
-      headers: {
-        'User-Agent': UA,
-        Accept: 'text/html,application/xhtml+xml',
-        'Accept-Language': 'en-CA,en;q=0.9'
+    let currentUrl = url;
+    let res;
+    for (let hop = 0; hop <= 3; hop++) {
+      if (!isSafePublicHttpUrl(currentUrl)) {
+        return { status: 0, body: '', error: 'redirected to an unsafe URL' };
       }
-    });
+      res = await fetch(currentUrl, {
+        redirect: 'manual',
+        signal: controller.signal,
+        headers: {
+          'User-Agent': UA,
+          Accept: 'text/html,application/xhtml+xml',
+          'Accept-Language': 'en-CA,en;q=0.9'
+        }
+      });
+      if (res.status < 300 || res.status >= 400) break;
+      const location = res.headers.get('location');
+      if (!location || hop === 3) {
+        return { status: res.status, body: '', error: 'redirect limit reached' };
+      }
+      currentUrl = new URL(location, currentUrl).href;
+    }
     const body = (await res.text().catch(() => '')).slice(0, 500000);
-    return { status: res.status, body };
+    return { status: res.status, body, finalUrl: currentUrl };
   } catch (err) {
     return { status: 0, body: '', error: err.name === 'AbortError' ? 'timeout' : err.message };
   } finally {
@@ -228,11 +245,19 @@ async function main() {
       continue;
     }
 
-    const res = await fetchHtml(row.url, o.timeoutMs);
+    const ats = await fetchPublicAtsJob(row.url, { timeoutMs: o.timeoutMs });
+    const res = ats.ok ? null : await fetchHtml(row.url, o.timeoutMs);
     let extracted = null;
     let reason;
 
-    if (res.error) {
+    if (ats.ok) {
+      if (ats.job.description.length < o.minChars) {
+        reason = `public ATS text too short (${ats.job.description.length} < ${o.minChars})`;
+      } else {
+        extracted = ats.job.description.slice(0, o.maxChars);
+        reason = `via ${ats.provider} public API, ${extracted.length} chars`;
+      }
+    } else if (res.error) {
       reason = `network: ${res.error}`;
     } else if (res.status !== 200) {
       reason = `HTTP ${res.status}`;
@@ -273,7 +298,7 @@ async function main() {
     } else {
       missed++;
       log(`⚠️  #${String(row.id).padEnd(6)} ${(row.company || '').slice(0, 26).padEnd(26)} ${reason}`);
-      if (res.status === 403 || res.status === 429) {
+      if (res?.status === 403 || res?.status === 429) {
         const n = (failuresByHost.get(host) || 0) + 1;
         failuresByHost.set(host, n);
         if (n >= o.maxFailuresPerHost) {
