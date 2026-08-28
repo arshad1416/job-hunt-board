@@ -1,0 +1,8 @@
+# Static-first site with no asset fingerprinting: force revalidation so
+# deploys reach browsers immediately instead of up to max-age=14400 later.
+/index.html
+  Cache-Control: no-cache
+/app.js
+  Cache-Control: no-cache
+/style.css
+  Cache-Control: no-cache
