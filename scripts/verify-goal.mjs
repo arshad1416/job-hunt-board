@@ -204,6 +204,11 @@ async function checkGeneratePassesJd() {
   const calls = (src.match(/\$\{jobDescriptionBlock\(job\)\}/g) || []).length;
   if (calls < 2) missing.push(`only ${calls}/2 prompts include it`);
   if (!/job\.description/.test(src)) missing.push('never reads job.description');
+  if (!/9router\.arshadkazi\.ca/.test(src)) missing.push('endpoint is not 9Router');
+  if (!/cc\/claude-opus-5/.test(src)) missing.push('model is not cc/claude-opus-5');
+  if (!/stream:\s*false/.test(src)) missing.push('stream:false not set (9Router streams by default)');
+  if (!/NINEROUTER_API_KEY/.test(src)) missing.push('does not read NINEROUTER_API_KEY');
+  if (!/AbortSignal\.timeout/.test(src)) missing.push('LLM call has no timeout');
   return missing.length
     ? { pass: false, detail: missing.join('; ') }
     : { pass: true, detail: 'JD body interpolated into both the resume and cover-letter prompts' };

@@ -1,6 +1,6 @@
 # Job Hunt Board
 
-A single-page job hunt dashboard deployed on **Cloudflare Pages** that renders a daily-refreshed, ranked table of scraped jobs (EV Commercial + AI/Engineering tracks), generates tailored resumes & cover letters via **GLM-5.2**, and tracks application status.
+A single-page job hunt dashboard deployed on **Cloudflare Pages** that renders a daily-refreshed, ranked table of scraped jobs (EV Commercial + AI/Engineering tracks), generates tailored resumes & cover letters via **Claude Opus 5** (9Router), and tracks application status.
 
 - **Live URL:** `jobs.arshadkazi.ca` (Cloudflare Pages)
 - **Repo:** `github.com/arshad1416/job-hunt-board`
