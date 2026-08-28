@@ -111,9 +111,9 @@ If `DASHBOARD_AUTH_TOKEN` is unset on the server, every non-public route fails c
 | `GET` | `/api/health` | none | Liveness + config check (`{ok, configured, config}`) |
 | `POST` | `/api/generate` | `X-Auth-Token` | Generate resume + cover letter via Claude Opus 5, store in R2, update Turso status |
 | `POST` | `/api/applied` | `X-Auth-Token` | Toggle applied status in Turso |
-| `GET` | `/api/materials/:job_id/:filename` | none | Serve generated materials from R2 (public for browser tab access) |
+| `GET` | `/api/materials/:job_id/:filename` | signed `?token=` or `X-Auth-Token` | Serve generated materials from R2 (browser tabs open short-lived signed links) |
 
-**Auth:** Mutations (`generate`, `applied`) require header `X-Auth-Token: <DASHBOARD_AUTH_TOKEN>`. The browser stores this token in `localStorage` (set via the 🔑 Token button). Materials and health are public.
+**Auth:** Mutations (`generate`, `applied`) require header `X-Auth-Token: <DASHBOARD_AUTH_TOKEN>`. The browser stores this token in `localStorage` (set via the 🔑 Token button). Health is public.
 
 ---
 

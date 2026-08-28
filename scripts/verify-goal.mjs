@@ -196,7 +196,7 @@ async function checkSummaries() {
   };
 }
 
-/** 5. generate.js sends the JD body to GLM-5.2. */
+/** 5. generate.js sends the JD body to the LLM alongside the prompt. */
 async function checkGeneratePassesJd() {
   const src = await readFile(join(REPO, 'functions/api/generate.js'), 'utf8');
   const missing = [];
@@ -260,7 +260,7 @@ const CRITERIA = [
   ['CORS pinned to the domain, not "*"',                  (env, o) => checkCorsPinned(o)],
   ['applications.description exists and a real run fills it', (env) => checkDescriptionColumn(env)],
   ['data/jobs.json rows have non-empty summary',          () => checkSummaries()],
-  ['generate.js passes the JD body to GLM-5.2',           () => checkGeneratePassesJd()],
+  ['generate.js passes the JD body to the LLM',            () => checkGeneratePassesJd()],
   ['liveness pass marks dead postings expired',           (env) => checkLiveness(env)],
   ['the 9AM ET cron completed cleanly',                   (env, o) => checkCron(o)]
 ];

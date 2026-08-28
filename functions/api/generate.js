@@ -38,6 +38,9 @@ const MAX_STORED_JD_CHARS = 20000;
 /** Budget for the on-demand JD fetch. Generation continues without it. */
 const JD_FETCH_TIMEOUT_MS = 10000;
 
+/** Budget for one Opus 5 generation call (two run in parallel). */
+const LLM_TIMEOUT_MS = 120000;
+
 const JD_FETCH_UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 ' +
   '(KHTML, like Gecko) Chrome/125.0 Safari/537.36';
@@ -275,6 +278,7 @@ async function callLLM(apiKey, prompt) {
       'Authorization': 'Bearer ' + apiKey,
       'Content-Type': 'application/json'
     },
+    signal: AbortSignal.timeout(LLM_TIMEOUT_MS),
     body: JSON.stringify({
       model: LLM_MODEL,
       stream: false,
@@ -292,8 +296,12 @@ async function callLLM(apiKey, prompt) {
   }
 
   const data = await res.json();
-  // OpenAI-compatible response format
-  const content = data.choices?.[0]?.message?.content;
+  // OpenAI-compatible response format; some gateways return content as an
+  // array of typed parts — flatten to plain text before use.
+  let content = data.choices?.[0]?.message?.content;
+  if (Array.isArray(content)) {
+    content = content.map(p => (p && typeof p === 'object' ? (p.text || '') : String(p))).join('');
+  }
   if (!content) {
     throw new Error('LLM API returned empty content');
   }
@@ -365,6 +373,8 @@ export async function onRequestPost(context) {
   // text actually enters the system. One request, for this job only.
   let jdSource = jobDescriptionText(job) ? 'stored' : 'unavailable';
   if (jdSource === 'unavailable' && job.url) {
+    // Capture the stale value first: title-only rows must be refreshable.
+    const staleDesc = job.description;
     const fetched = await fetchJobDescription(job.url);
     if (fetched && fetched.length >= MIN_JD_CHARS && !isTitleOnly(fetched, job.title)) {
       job.description = fetched.slice(0, MAX_STORED_JD_CHARS);
@@ -378,8 +388,8 @@ export async function onRequestPost(context) {
           env,
           "UPDATE applications SET description=?, updated_at=datetime('now') " +
           "WHERE id=? AND (description IS NULL OR trim(description)='' " +
-          "                OR length(trim(description)) < ?)",
-          [job.description, jobId, MIN_JD_CHARS]
+          "                OR length(trim(description)) < ? OR description = ?)",
+          [job.description, jobId, MIN_JD_CHARS, staleDesc]
         );
       } catch (err) {
         // Non-fatal: we still have the text in memory for this generation.

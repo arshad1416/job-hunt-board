@@ -172,7 +172,7 @@
 
   function showGenerateModal() {
     $('modal-title').textContent = 'Generating Materials…';
-    $('modal-status').textContent = 'Calling GLM-5.2 to tailor your resume and cover letter…';
+    $('modal-status').textContent = 'Calling Claude Opus 5 to tailor your resume and cover letter…';
     $('modal-status').style.display = 'block';
     document.querySelector('.modal-spinner-wrap').style.display = 'flex';
     $('modal-result').style.display = 'none';
@@ -412,7 +412,7 @@
   // ═══════════════════════════════════════════════════════════════
 
   /**
-   * POST /api/generate — generate resume + cover letter via GLM-5.2.
+   * POST /api/generate — generate resume + cover letter via Claude Opus 5.
    */
   async function generateMaterials(jobId, btn) {
     if (!getToken()) {
