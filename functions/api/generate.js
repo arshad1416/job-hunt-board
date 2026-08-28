@@ -18,7 +18,7 @@ import { signedMaterialUrls } from '../_lib/signing.js';
 import { extractJobDescription } from '../_lib/extract-jd.mjs';
 import { fetchPublicAtsJob } from '../_lib/public-ats.mjs';
 import { isSafePublicHttpUrl } from '../_lib/job-url.mjs';
-import { MISSION, RESUME_STANDARDS, COVER_LETTER_STANDARDS, PROFILE_KEY, trackReferenceKey } from '../_lib/job-hunter-skill.mjs';
+import { MISSION, RESUME_STANDARDS, COVER_LETTER_STANDARDS, PROFILE_KEY, trackReferenceKey } from '../_lib/job-hunter-skill.js';
 
 const LLM_ENDPOINT = 'https://9router.arshadkazi.ca/v1/chat/completions';
 const LLM_MODEL = 'cc/claude-opus-5';
