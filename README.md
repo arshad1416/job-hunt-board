@@ -62,7 +62,7 @@ All configured in the **Cloudflare Pages dashboard** (Settings → Environment v
 |---|---|---|---|
 | `TURSO_URL` | plaintext var | dashboard + `wrangler.jsonc` | `https://morning-briefing-arshad1416.aws-us-east-1.turso.io` |
 | `TURSO_TOKEN` | **secret** | dashboard only | Turso DB auth token (Bearer). Same token the Pi uses. |
-| `OPENCODE_GO_API_KEY` | **secret** | dashboard only | OpenCode Go API key for GLM-5.2. |
+| `NINEROUTER_API_KEY` | **secret** | dashboard only | 9Router API key for Claude Opus 5 resume generation. |
 | `DASHBOARD_AUTH_TOKEN` | **secret** | dashboard only | Shared secret for all `/api/*` routes except `/api/health`. Browser sends `X-Auth-Token` header. Generate with `openssl rand -hex 32`. |
 | `MATERIALS_SIGNING_KEY` | **secret** _(optional)_ | dashboard only | HMAC key for signed material links. Falls back to `DASHBOARD_AUTH_TOKEN` when unset. Set it to rotate material links independently of the dashboard token. |
 | `ALLOWED_ORIGINS` | plaintext var _(optional)_ | dashboard only | Comma-separated CORS allow-list. Defaults to `https://jobs.arshadkazi.ca`, `https://job-hunt-board.pages.dev`, `http://localhost:8788`. |
@@ -94,11 +94,12 @@ If `DASHBOARD_AUTH_TOKEN` is unset on the server, every non-public route fails c
   on demand. `sync_to_dashboard.py` derives the short dashboard summary from
   that body, with legacy `notes` as a fallback.
 
-### OpenCode Go API (GLM-5.2)
+### 9Router API (Claude Opus 5)
 
-- **Endpoint:** `https://opencode.ai/zen/go/v1/chat/completions`
-- **Model:** `glm-5.2`
-- **Auth:** `Authorization: Bearer <OPENCODE_GO_API_KEY>`
+- **Endpoint:** `https://9router.arshadkazi.ca/v1/chat/completions` (Cloudflare Tunnel to 9Router on the Pi; OpenAI-compatible)
+- **Model:** `cc/claude-opus-5`
+- **Auth:** `Authorization: Bearer <NINEROUTER_API_KEY>`
+- Requests must set `stream: false` — 9Router streams by default.
 - Called by `/api/generate` to produce `resume.md` and `cover_letter.md` per job.
 
 ---
@@ -108,7 +109,7 @@ If `DASHBOARD_AUTH_TOKEN` is unset on the server, every non-public route fails c
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
 | `GET` | `/api/health` | none | Liveness + config check (`{ok, configured, config}`) |
-| `POST` | `/api/generate` | `X-Auth-Token` | Generate resume + cover letter via GLM-5.2, store in R2, update Turso status |
+| `POST` | `/api/generate` | `X-Auth-Token` | Generate resume + cover letter via Claude Opus 5, store in R2, update Turso status |
 | `POST` | `/api/applied` | `X-Auth-Token` | Toggle applied status in Turso |
 | `GET` | `/api/materials/:job_id/:filename` | none | Serve generated materials from R2 (public for browser tab access) |
 
@@ -156,7 +157,7 @@ In the Pages project → **Settings**:
 |---|---|---|
 | `TURSO_URL` | Plaintext | `https://morning-briefing-arshad1416.aws-us-east-1.turso.io` |
 | `TURSO_TOKEN` | **Encrypted** | *(your Turso auth token)* |
-| `OPENCODE_GO_API_KEY` | **Encrypted** | *(your OpenCode Go API key)* |
+| `NINEROUTER_API_KEY` | **Encrypted** | *(your 9Router API key)* |
 | `DASHBOARD_AUTH_TOKEN` | **Encrypted** | *(generate: `openssl rand -hex 32`)* |
 
 3. After adding all variables, **redeploy** (Settings changes require a new deployment to take effect)
@@ -164,7 +165,7 @@ In the Pages project → **Settings**:
 #### Via Wrangler CLI (alternative)
 ```bash
 npx wrangler pages secret put TURSO_TOKEN          --project-name job-hunt-board
-npx wrangler pages secret put OPENCODE_GO_API_KEY  --project-name job-hunt-board
+npx wrangler pages secret put NINEROUTER_API_KEY    --project-name job-hunt-board
 npx wrangler pages secret put DASHBOARD_AUTH_TOKEN --project-name job-hunt-board
 ```
 
@@ -197,7 +198,7 @@ npm install -g wrangler
 # Create .dev.vars file (gitignored) with secrets:
 cat > .dev.vars << 'EOF'
 TURSO_TOKEN=your_turso_token
-OPENCODE_GO_API_KEY=your_opencode_key
+NINEROUTER_API_KEY=your_9router_key
 DASHBOARD_AUTH_TOKEN=your_auth_token
 EOF
 
@@ -262,7 +263,7 @@ Written daily by the Pi's `sync_to_dashboard.py`:
 
 > **Note:** The Turso `applications` table has no `posted_at` column — `found_at` stands in for posted date.
 >
-> `description` **is** an `applications` column as of `migrations/001_add_description_column.sql`, and `/api/generate` sends it to GLM-5.2 so resumes are written from the posting text rather than the job title.
+> `description` **is** an `applications` column as of `migrations/001_add_description_column.sql`, and `/api/generate` sends it to Claude Opus 5 so resumes are written from the posting text rather than the job title.
 >
 > **Descriptions and canonical URLs are captured without a per-posting board crawl.** `scripts/jobspy_json.mjs` calls jobspy's structured API instead of its lossy MCP summary, preserving the description and `job_url_direct` fields already present in search results. The employer/ATS URL is promoted over the LinkedIn/Indeed URL and known Recruitics tracking hops are removed. LinkedIn's optional per-result description request stays off by default because it is the block-prone path. When a description is still missing, `/api/generate` tries the posting's public Greenhouse, Lever, Workday, or SmartRecruiters endpoint first, then performs one bounded HTML fetch and caches the result. A title echo or text under 120 characters is treated as absent.
 >
@@ -306,7 +307,7 @@ Score = **title (40%) + skills (30%) + location (15%) + remote fit (15%)**, with
 | Edge Functions | Cloudflare Pages Functions (Workers runtime) |
 | Database | Turso (libSQL) — HTTP v2 pipeline API |
 | Object Storage | Cloudflare R2 (`job-hunt-materials` bucket) |
-| AI Generation | GLM-5.2 via OpenCode Go API |
+| AI Generation | Claude Opus 5 via 9Router |
 | Hosting | Cloudflare Pages |
 | Data Pipeline | Raspberry Pi 5 cron + jobspy-js MCP |
 

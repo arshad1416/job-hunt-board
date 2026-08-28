@@ -9,7 +9,7 @@ export async function onRequestGet(context) {
   const config = {
     turso_url: !!env.TURSO_URL,
     turso_token: !!env.TURSO_TOKEN,
-    glm_key: !!env.OPENCODE_GO_API_KEY,
+    llm_key: !!env.NINEROUTER_API_KEY,
     r2_bucket: !!env.JOB_MATERIALS_BUCKET,
     auth_token: !!env.DASHBOARD_AUTH_TOKEN
   };

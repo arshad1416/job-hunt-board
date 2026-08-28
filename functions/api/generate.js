@@ -7,7 +7,7 @@
    2. Fetch full job row from Turso (parameterized) — including the
       `description` column, so the model sees the real JD body and not
       just the job title
-   3. Call GLM-5.2 (OpenCode Go) → resume.md + cover_letter.md
+   3. Call Claude Opus 5 (9Router) → resume.md + cover_letter.md
    4. Store in R2:  materials/<job_id>/{resume,cover_letter}.md
    5. Update Turso: status='materials_ready'
    6. Return material URLs
@@ -19,8 +19,8 @@ import { extractJobDescription } from '../_lib/extract-jd.mjs';
 import { fetchPublicAtsJob } from '../_lib/public-ats.mjs';
 import { isSafePublicHttpUrl } from '../_lib/job-url.mjs';
 
-const GLM_ENDPOINT = 'https://opencode.ai/zen/go/v1/chat/completions';
-const GLM_MODEL = 'glm-5.2';
+const LLM_ENDPOINT = 'https://9router.arshadkazi.ca/v1/chat/completions';
+const LLM_MODEL = 'cc/claude-opus-5';
 
 /** Upper bound on JD text sent to the model, in characters. */
 const MAX_JD_CHARS = 6000;
@@ -263,18 +263,21 @@ Begin:`;
 }
 
 /**
- * Call GLM-5.2 via the OpenCode Go chat completions API.
+ * Call Claude Opus 5 via the 9Router OpenAI-compatible chat completions API.
+ * 9Router streams by default, so `stream: false` is required to get a plain
+ * JSON body back.
  * @returns {Promise<string>} the generated text content
  */
-async function callGLM(apiKey, prompt) {
-  const res = await fetch(GLM_ENDPOINT, {
+async function callLLM(apiKey, prompt) {
+  const res = await fetch(LLM_ENDPOINT, {
     method: 'POST',
     headers: {
       'Authorization': 'Bearer ' + apiKey,
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      model: GLM_MODEL,
+      model: LLM_MODEL,
+      stream: false,
       messages: [
         { role: 'user', content: prompt }
       ],
@@ -285,14 +288,14 @@ async function callGLM(apiKey, prompt) {
 
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    throw new Error('GLM API HTTP ' + res.status + ': ' + text.slice(0, 300));
+    throw new Error('LLM API HTTP ' + res.status + ': ' + text.slice(0, 300));
   }
 
   const data = await res.json();
   // OpenAI-compatible response format
   const content = data.choices?.[0]?.message?.content;
   if (!content) {
-    throw new Error('GLM API returned empty content');
+    throw new Error('LLM API returned empty content');
   }
   return content;
 }
@@ -385,15 +388,15 @@ export async function onRequestPost(context) {
     }
   }
 
-  // ── 4. Call GLM-5.2 for resume + cover letter ──
+  // ── 4. Call Claude Opus 5 for resume + cover letter ──
   let resumeMd, coverMd;
   try {
     [resumeMd, coverMd] = await Promise.all([
-      callGLM(env.OPENCODE_GO_API_KEY, resumePrompt(job)),
-      callGLM(env.OPENCODE_GO_API_KEY, coverLetterPrompt(job))
+      callLLM(env.NINEROUTER_API_KEY, resumePrompt(job)),
+      callLLM(env.NINEROUTER_API_KEY, coverLetterPrompt(job))
     ]);
   } catch (err) {
-    console.error('GLM generation error:', err);
+    console.error('LLM generation error:', err);
     return json({ error: 'AI generation failed: ' + err.message }, 502);
   }
 
