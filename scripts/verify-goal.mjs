@@ -204,14 +204,16 @@ async function checkGeneratePassesJd() {
   const calls = (src.match(/\$\{jobDescriptionBlock\(job\)\}/g) || []).length;
   if (calls < 2) missing.push(`only ${calls}/2 prompts include it`);
   if (!/job\.description/.test(src)) missing.push('never reads job.description');
-  if (!/9router\.arshadkazi\.ca/.test(src)) missing.push('endpoint is not 9Router');
-  if (!/cc\/claude-opus-5/.test(src)) missing.push('model is not cc/claude-opus-5');
-  if (!/stream:\s*false/.test(src)) missing.push('stream:false not set (9Router streams by default)');
-  if (!/NINEROUTER_API_KEY/.test(src)) missing.push('does not read NINEROUTER_API_KEY');
-  if (!/AbortSignal\.timeout/.test(src)) missing.push('LLM call has no timeout');
+  // Exact-constant assertions (not loose regexes that could match comments)
+  if (!/const LLM_ENDPOINT = 'https:\/\/9router\.arshadkazi\.ca\/v1\/chat\/completions'/.test(src)) missing.push('endpoint constant is not the 9Router URL');
+  if (!/const LLM_MODEL = 'cc\/claude-opus-5'/.test(src)) missing.push('model constant is not cc/claude-opus-5');
+  if (!/^ {6}stream: false,$/m.test(src)) missing.push('request body does not send stream: false');
+  if (!/env\.NINEROUTER_API_KEY/.test(src)) missing.push('does not read env.NINEROUTER_API_KEY');
+  if (!/const LLM_TIMEOUT_MS = 120000/.test(src)) missing.push('LLM timeout is not 120000ms');
+  if (!/signal: AbortSignal\.timeout\(LLM_TIMEOUT_MS\)/.test(src)) missing.push('LLM fetch has no AbortSignal');
   return missing.length
     ? { pass: false, detail: missing.join('; ') }
-    : { pass: true, detail: 'JD body interpolated into both the resume and cover-letter prompts' };
+    : { pass: true, detail: 'JD body + full 9Router/Opus 5 contract (endpoint, model, stream:false, key, timeout) verified' };
 }
 
 /** 6. The liveness pass has moved dead postings to 'expired'. */
