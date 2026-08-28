@@ -20,7 +20,7 @@ Cloudflare Pages (auto-deploy on push)
   Functions (/api/*): generate, applied, materials, health
 ```
 
-The frontend is **static-first** — it reads `data/jobs.json` (committed daily by the Pi) and never hits the database at render time. Cloudflare Pages Functions are used only for mutations (generate materials, toggle applied) and file serving.
+The frontend is **static-first** — it reads `data/jobs.json` (committed daily by the Pi) and never hits the database at render time. Cloudflare Pages Functions handle authenticated mutations (generation, status, follow-up drafts) and file serving.
 
 ---
 
@@ -33,6 +33,8 @@ job-hunt-board/
 ├── app.js                              # Frontend controller (fetch, render, filter, actions)
 ├── _routes.json                        # Only /api/* runs as Functions
 ├── wrangler.jsonc                      # Cloudflare Pages config (non-secret bindings)
+├── migrations/                         # Additive Turso schema migrations
+├── scripts/lib/public_ats.py           # Opt-in Greenhouse/Lever/Ashby board APIs
 ├── README.md                           # This file
 ├── .gitignore
 ├── data/
@@ -40,6 +42,11 @@ job-hunt-board/
 └── functions/
     ├── _lib/
     │   ├── turso.js                    # Shared Turso v2 pipeline helper
+    │   ├── cv-gates.js                 # Deterministic facts, ATS, keyword, simhash gates
+    │   ├── generation-quality.js       # Reviewer/reuse quality helpers
+    │   ├── followup-draft.js           # Follow-up prompt validation and redaction
+    │   ├── status.js                   # Shared application status vocabulary
+    │   ├── job-hunter-skill.js         # R2 skill/profile key constants
     │   └── signing.js                  # HMAC-signed, time-limited material links
     └── api/
         ├── _middleware.js              # Pinned CORS + auth gate for /api/*
@@ -47,6 +54,8 @@ job-hunt-board/
         ├── generate.js                 # POST /api/generate
         ├── applied.js                  # POST /api/applied
         ├── material-links.js           # POST /api/material-links  (mints signed URLs)
+        ├── status.js                  # POST/GET /api/status + status ledger
+        ├── followup-draft.js          # POST /api/followup-draft
         └── materials/
             └── [job_id]/
                 └── [filename].js       # GET  /api/materials/:job_id/:filename
@@ -75,7 +84,7 @@ All configured in the **Cloudflare Pages dashboard** (Settings → Environment v
 | `GET /api/health` | Public (uptime monitors). Returns booleans only — never values. |
 | `GET /api/materials/:job_id/:filename` | **Not public.** Requires an `X-Auth-Token` header, or a signed `?token=` minted by `/api/material-links`. Enumerating numeric `job_id`s returns `401`. |
 | `POST /api/material-links` | `X-Auth-Token` required. Returns 15-minute signed URLs for one job's materials. |
-| `POST /api/generate`, `POST /api/applied` | `X-Auth-Token` required. |
+| `POST /api/generate`, `POST /api/applied`, `POST /api/status`, `POST /api/followup-draft` | `X-Auth-Token` required. |
 
 Signed links are HMAC-SHA256 over `v1:<job_id>:<filename>:<exp>` (see `functions/_lib/signing.js`). A token is bound to one job **and** one filename, so it cannot be walked sideways to another posting or another file, and it expires on its own. Browser tabs can't send custom headers, which is why signed URLs exist — `viewMaterials()` in `app.js` opens the tabs, then points them at freshly signed URLs.
 
@@ -116,11 +125,14 @@ If `DASHBOARD_AUTH_TOKEN` is unset on the server, every non-public route fails c
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
 | `GET` | `/api/health` | none | Liveness + config check (`{ok, configured, config}`) |
-| `POST` | `/api/generate` | `X-Auth-Token` | Generate resume + cover letter via Claude Opus 5, store in R2, update Turso status |
-| `POST` | `/api/applied` | `X-Auth-Token` | Toggle applied status in Turso |
+| `POST` | `/api/generate` | `X-Auth-Token` | Generate resume + cover letter via Claude Opus 5, run deterministic quality gates, store in R2, update Turso status |
+| `POST` | `/api/applied` | `X-Auth-Token` | Legacy toggle; also maintains applied/follow-up bookkeeping |
+| `POST` | `/api/status` | `X-Auth-Token` | Set extended lifecycle status and append status ledger event |
+| `GET` | `/api/status?job_id=N` | `X-Auth-Token` | Read status ledger for one job |
+| `POST` | `/api/followup-draft` | `X-Auth-Token` | Generate a bounded follow-up draft for eligible statuses |
 | `GET` | `/api/materials/:job_id/:filename` | signed `?token=` or `X-Auth-Token` | Serve generated materials from R2 (browser tabs open short-lived signed links) |
 
-**Auth:** Mutations (`generate`, `applied`) require header `X-Auth-Token: <DASHBOARD_AUTH_TOKEN>`. The browser stores this token in `localStorage` (set via the 🔑 Token button). Health is public.
+**Auth:** Mutations (`generate`, `applied`, `status`, `followup-draft`) require header `X-Auth-Token: <DASHBOARD_AUTH_TOKEN>`. The browser stores this token in `localStorage` (set via the 🔑 Token button). Health is public.
 
 ---
 
@@ -225,9 +237,9 @@ npx wrangler pages dev . \
 - **Score bars** — green (≥70), amber (50–69), red (<50)
 - **Track badges** — EV = blue, AI = purple
 - **Client-side filtering** — track, min-score, status, search (no re-fetch on filter change)
-- **Stats bar** — Total, New (24h), EV, AI, Applied, Materials Ready
-- **Generate modal** — shows spinner → success with download links, or error
-- **Applied checkbox** — optimistic UI with server sync and rollback on failure
+- **Stats bar** — Total, New (24h), EV, AI, Applied, Follow-ups Due, Materials Ready
+- **Generate modal** — shows spinner, ATS/fact quality summary, download links, and follow-up draft action
+- **Status lifecycle** — found → materials_ready → saved → applied → screening → interview → offer/rejected/ghosted, with optimistic sync and rollback
 - **Token management** — auth token stored in `localStorage`, set via 🔑 Token button
 - **Responsive** — works on mobile (hides summary/location columns on small screens)
 
@@ -262,7 +274,14 @@ Written daily by the Pi's `sync_to_dashboard.py`:
       "has_description": true,
       "posted_date": "2026-06-18",
       "found_at": "2026-06-19 13:00:11",
-      "has_materials": false
+      "has_materials": false,
+      "deadline": "2026-09-30",
+      "deadline_status": "open",
+      "urgency": "high",
+      "is_repost": false,
+      "gate": "",
+      "follow_up_due": "",
+      "quality": null
     }
   ]
 }
@@ -296,7 +315,7 @@ node scripts/check-liveness.mjs --limit 50            # dry run
 node scripts/check-liveness.mjs --limit 50 --commit   # apply
 ```
 
-The API-first provider and three-way liveness strategy are adapted from [santifer/career-ops](https://github.com/santifer/career-ops). This repo keeps the core path zero-dependency: recognized employer ATS endpoints are preferred, and blocked board responses remain `uncertain`.
+The API-first provider, three-way liveness strategy, URL fingerprints, and bounded follow-up cadence are adapted from [santifer/career-ops](https://github.com/santifer/career-ops). The job scoring/gating and truthful application workflow also borrow the useful separation in [MadsLorentzen/ai-job-search](https://github.com/MadsLorentzen/ai-job-search). This repo keeps the core path zero-dependency: recognized employer ATS endpoints are preferred, and blocked board responses remain `uncertain`. The Pi board-ingestion allowlist is Greenhouse/Lever/Ashby; the generator's URL-derived detail fallback additionally supports Workday and SmartRecruiters without accepting arbitrary API targets.
 
 ---
 

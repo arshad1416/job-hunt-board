@@ -45,6 +45,10 @@
       <span class="stat-value" id="stat-applied">0</span>
       <span class="stat-label">Applied</span>
     </div>
+    <div class="stat-card stat-followup">
+      <span class="stat-value" id="stat-followup">0</span>
+      <span class="stat-label">Follow-ups Due</span>
+    </div>
     <div class="stat-card">
       <span class="stat-value" id="stat-materials">0</span>
       <span class="stat-label">Materials Ready</span>
@@ -73,7 +77,12 @@
         <option value="all">All</option>
         <option value="found">New (found)</option>
         <option value="materials_ready">Materials Ready</option>
-        <option value="applied">Applied</option>
+        <option value="applied">Applied (pipeline)</option>
+        <option value="screening">Screening</option>
+        <option value="interview">Interview</option>
+        <option value="offer">Offer</option>
+        <option value="rejected">Rejected</option>
+        <option value="ghosted">Ghosted</option>
         <option value="saved">Saved</option>
         <option value="not_applied">Not Applied</option>
       </select>
@@ -104,7 +113,7 @@
           <th class="col-posted">Posted</th>
           <th class="col-location">Location</th>
           <th class="col-actions">Actions</th>
-          <th class="col-applied">Applied</th>
+          <th class="col-applied">Status</th>
         </tr>
       </thead>
       <tbody id="jobs-tbody">
@@ -183,9 +192,11 @@
         </div>
         <div class="modal-result" id="modal-result" style="display:none;">
           <p class="result-success">✅ Materials generated successfully!</p>
+          <p class="quality-summary" id="quality-summary"></p>
           <div class="result-links">
             <a href="#" id="link-resume" target="_blank" class="btn btn-primary">📄 View Resume</a>
-            <a href="#" id="link-cover" target="_blank" class="btn btn-primary">✉️ View Cover Letter</a>
+              <a href="#" id="link-cover" target="_blank" class="btn btn-primary">✉️ View Cover Letter</a>
+            <button type="button" id="btn-followup-modal" class="btn btn-outline" style="display:none;">✍ Follow-up Draft</button>
           </div>
         </div>
         <div class="modal-error" id="modal-error" style="display:none;">
