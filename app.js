@@ -61,6 +61,11 @@
       .replace(/'/g, '&#39;');
   }
 
+  // Encode inline-handler arguments as HTML-safe JSON strings.
+  function inlineArg(value) {
+    return escapeHtml(JSON.stringify(String(value)));
+  }
+
   /**
    * Validate that a URL uses a safe http(s) protocol before rendering it as
    * a link. Prevents javascript:/data: URLs from being injected into href (W6).
@@ -144,6 +149,107 @@
   }
 
   // ═══════════════════════════════════════════════════════════════
+  // EXTENDED STATUS VOCABULARY (portal subset)
+  // ═══════════════════════════════════════════════════════════════
+  // Mirrors functions/_lib/status.js. The first four values are the
+  // legacy statuses; the rest are additive extensions. Old jobs.json
+  // files never contain them, so rendering falls back cleanly.
+  const STATUS_LABELS = {
+    found: 'New',
+    materials_ready: 'Materials Ready',
+    saved: 'Saved',
+    applied: 'Applied',
+    screening: 'Screening',
+    interview: 'Interview',
+    offer: 'Offer',
+    rejected: 'Rejected',
+    ghosted: 'Ghosted'
+  };
+  const POST_APPLIED = new Set([
+    'applied', 'screening', 'interview', 'offer', 'rejected', 'ghosted'
+  ]);
+  const FOLLOW_UP_ELIGIBLE = new Set(['applied', 'screening', 'interview', 'offer']);
+
+  function normalizeStatus(raw) {
+    if (typeof raw !== 'string') return null;
+    const key = raw.trim().toLowerCase();
+    if (key === 'not_applied' || key === 'new') return 'found';
+    return STATUS_LABELS[key] ? key : null;
+  }
+
+  function statusLabel(raw) {
+    const s = normalizeStatus(raw);
+    return s ? STATUS_LABELS[s] : (raw || 'Unknown');
+  }
+
+  function statusClass(raw) {
+    const s = normalizeStatus(raw);
+    return s ? 'status-' + s : 'status-unknown';
+  }
+
+  function isPostApplied(status) {
+    const s = normalizeStatus(status);
+    return s !== null && POST_APPLIED.has(s);
+  }
+
+  /**
+   * Readable follow-up due string: 'Due 2026-09-01', 'Follow-up due!',
+   * or '' when none applies (never applied / dead end).
+   */
+  function followUpDisplay(job) {
+    if (!job) return '';
+    const s = normalizeStatus(job.status);
+    if (!FOLLOW_UP_ELIGIBLE.has(s)) return '';
+    let due = (typeof job.follow_up_due === 'string' && job.follow_up_due) || '';
+    if (!due) {
+      const appliedAt = job.applied_at || job.applied_date;
+      if (appliedAt && FOLLOW_UP_ELIGIBLE.has(s)) {
+        let iso = String(appliedAt).replace(' ', 'T');
+        if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(iso)) iso += 'Z';
+        const d = new Date(iso);
+        if (!isNaN(d.getTime())) {
+          d.setUTCDate(d.getUTCDate() + 7);
+          due = d.toISOString().slice(0, 10);
+        }
+      }
+    }
+    if (!due) return '';
+    const dueDate = new Date(due + 'T00:00:00Z');
+    if (isNaN(dueDate.getTime())) return '';
+    const now = new Date();
+    const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const overdue = dueDate < today;
+    return (overdue ? 'Follow-up due! (was ' + due + ')' : 'Follow-up due ' + due);
+  }
+
+  /** Urgency / repost / gate indicators — absent fields render nothing. */
+  function indicatorsHtml(job) {
+    const parts = [];
+    const u = String(job.urgency || '').trim().toLowerCase();
+    if (u === 'high' || u === 'medium') {
+      parts.push('<span class="indicator indicator-urgency-' + u + '" title="Urgency: ' + u + '">' +
+        (u === 'high' ? '🔥 High urgency' : '⚡ Medium urgency') + '</span>');
+    }
+    const repost = job.is_repost === true || job.is_repost === 1 ||
+                   job.is_repost === 'true' || job.is_repost === '1';
+    if (repost) {
+      parts.push('<span class="indicator indicator-repost" title="Reposted listing">♻ Repost</span>');
+    }
+    if (typeof job.gate === 'string' && job.gate.trim()) {
+      parts.push('<span class="indicator indicator-gate" title="Application gate">🚧 ' +
+        escapeHtml(job.gate.trim().slice(0, 40)) + '</span>');
+    }
+    return parts.join(' ');
+  }
+
+  /** Readable status badge (shown for every status, legacy ones included). */
+  function statusBadgeHtml(job) {
+    const label = statusLabel(job.status);
+    return '<span class="status-badge ' + statusClass(job.status) + '">' +
+      escapeHtml(label) + '</span>';
+  }
+
+  // ═══════════════════════════════════════════════════════════════
   // TOAST
   // ═══════════════════════════════════════════════════════════════
   function showToast(message, type = 'info', duration = 4000) {
@@ -170,7 +276,10 @@
     $(id).style.display = 'none';
   }
 
+  let lastGeneratedJobId = null;
+
   function showGenerateModal() {
+    lastGeneratedJobId = null;
     $('modal-title').textContent = 'Generating Materials…';
     $('modal-status').textContent = 'Calling Claude Opus 5 to tailor your resume and cover letter…';
     $('modal-status').style.display = 'block';
@@ -180,12 +289,21 @@
     showModal('generate-modal');
   }
 
-  function showGenerateResult(materials) {
+  function showGenerateResult(materials, quality, jobId) {
     document.querySelector('.modal-spinner-wrap').style.display = 'none';
     $('modal-status').style.display = 'none';
     $('modal-title').textContent = 'Materials Ready!';
     $('link-resume').href = materials.resume;
     $('link-cover').href = materials.cover_letter;
+    lastGeneratedJobId = String(jobId);
+    const q = quality || {};
+    $('quality-summary').textContent = 'ATS ' + (q.ats_score ?? '—') + '/100 · ' +
+      (q.facts_ok !== false ? 'facts grounded' : 'fact review needed') +
+      (q.keyword_coverage ? ' · keywords checked' : '');
+    const job = allJobs.find(j => String(j.id) === String(jobId));
+    const followupButton = $('btn-followup-modal');
+    followupButton.style.display = job && FOLLOW_UP_ELIGIBLE.has(normalizeStatus(job.status)) ? 'inline-flex' : 'none';
+    followupButton.onclick = () => draftFollowup(jobId);
     $('modal-result').style.display = 'block';
   }
 
@@ -212,7 +330,11 @@
 
       allJobs = (data.jobs || []).map(j => ({
         ...j,
-        has_materials: j.status === 'materials_ready' || j.has_materials === true
+        // Extended pipeline statuses (screening/interview/offer/rejected/
+        // ghosted) all imply materials were generated before applying.
+        has_materials: j.status === 'materials_ready' ||
+                       isPostApplied(j.status) ||
+                       j.has_materials === true
       }));
 
       // Update meta display
@@ -247,24 +369,17 @@
       // Min score filter
       if (filters.minScore > 0 && (job.score || 0) < filters.minScore) return false;
 
-      // Status filter
+      // Status filter. 'applied' keeps its legacy "in the pipeline"
+      // meaning (applied + extended post-application statuses) so old
+      // filters keep behaving; the extended options match exactly.
       if (filters.status !== 'all') {
-        switch (filters.status) {
-          case 'found':
-            if (job.status !== 'found') return false;
-            break;
-          case 'materials_ready':
-            if (job.status !== 'materials_ready') return false;
-            break;
-          case 'applied':
-            if (job.status !== 'applied') return false;
-            break;
-          case 'saved':
-            if (job.status !== 'saved') return false;
-            break;
-          case 'not_applied':
-            if (job.status === 'applied') return false;
-            break;
+        if (filters.status === 'not_applied') {
+          if (isPostApplied(job.status)) return false;
+        } else if (filters.status === 'applied') {
+          const s = normalizeStatus(job.status);
+          if (!s || ['applied', 'screening', 'interview', 'offer'].indexOf(s) === -1) return false;
+        } else if (normalizeStatus(job.status) !== filters.status) {
+          return false;
         }
       }
 
@@ -288,6 +403,16 @@
     renderTable();
   }
 
+  /** <option> list for the per-row status select. */
+  const STATUS_ORDER = ['found', 'materials_ready', 'saved', 'applied',
+    'screening', 'interview', 'offer', 'rejected', 'ghosted'];
+  function statusOptions(current) {
+    return STATUS_ORDER.map(function (s) {
+      const sel = normalizeStatus(current) === s ? ' selected' : '';
+      return '<option value="' + s + '"' + sel + '>' + STATUS_LABELS[s] + '</option>';
+    }).join('');
+  }
+
   // ═══════════════════════════════════════════════════════════════
   // RENDERING
   // ═══════════════════════════════════════════════════════════════
@@ -304,18 +429,17 @@
 
     tbody.innerHTML = filteredJobs.map((job, idx) => {
       const rank = idx + 1;
-      const score = job.score || 0;
+      const score = Number.isFinite(Number(job.score)) ? Math.max(0, Math.min(100, Number(job.score))) : 0;
       const sc = scoreClass(score);
       const salary = formatSalary(job.salary);
       const posted = getPostedDate(job);
       const asking = formatAsking(job.suggested_ask);
-      const applied = job.status === 'applied';
       const hasMaterials = job.has_materials;
 
       // Action buttons — quote job.id in onclick to keep it a string (C1)
       const generateBtn = hasMaterials
-        ? `<button class="btn btn-sm btn-view" onclick="viewMaterials('${job.id}')">👁 View</button>`
-        : `<button class="btn btn-sm btn-generate" onclick="generateMaterials('${job.id}', this)">✨ Generate</button>`;
+        ? `<button class="btn btn-sm btn-view" onclick="viewMaterials(${inlineArg(job.id)})">👁 View</button>`
+        : `<button class="btn btn-sm btn-generate" onclick="generateMaterials(${inlineArg(job.id)}, this)">✨ Generate</button>`;
 
       // Validate URL protocol before rendering as a link (W6)
       const applyLink = isSafeUrl(job.url)
@@ -341,7 +465,10 @@
             <div class="title-cell">
               ${titleLink}
               <span class="track-badge ${trackClass(job.track)}">${trackLabel(job.track)}</span>
+              ${statusBadgeHtml(job)}
+              ${indicatorsHtml(job)}
             </div>
+            ${followUpDisplay(job) ? '<div class="followup-cell">' + escapeHtml(followUpDisplay(job)) + '</div>' : ''}
           </td>
           <td class="company-cell">${escapeHtml(job.company || '—')}</td>
           <td>
@@ -354,13 +481,15 @@
             <div class="actions-cell">
               ${applyLink}
               ${generateBtn}
+              ${FOLLOW_UP_ELIGIBLE.has(normalizeStatus(job.status)) ? '<button class="btn btn-sm btn-outline" onclick="draftFollowup(' + inlineArg(job.id) + ')">✍ Follow-up</button>' : ''}
             </div>
           </td>
           <td class="applied-cell">
-            <input type="checkbox" class="applied-check" ${applied ? 'checked' : ''}
-              onchange="toggleApplied('${job.id}', this.checked, this)"
-              title="Mark as applied"
-              aria-label="Mark as applied" />
+            <select class="status-select"
+              onchange="setJobStatus(${inlineArg(job.id)}, this.value, this)"
+              aria-label="Application status">
+              ${statusOptions(job.status)}
+            </select>
           </td>
         </tr>
       `;
@@ -380,6 +509,7 @@
     let aiCount = 0;
     let appliedCount = 0;
     let materialsCount = 0;
+    let followUpCount = 0;
 
     for (const job of allJobs) {
       // New within 24h (based on found_at)
@@ -394,8 +524,9 @@
 
       if (job.track === 'ev_commercial') evCount++;
       if (job.track === 'ai_engineering') aiCount++;
-      if (job.status === 'applied') appliedCount++;
-      if (job.status === 'materials_ready') materialsCount++;
+      if (isPostApplied(job.status)) appliedCount++;
+      if (job.has_materials) materialsCount++;
+      if (followUpDisplay(job)) followUpCount++;
     }
 
     $('stat-total').textContent = total;
@@ -403,6 +534,7 @@
     $('stat-ev').textContent = evCount;
     $('stat-ai').textContent = aiCount;
     $('stat-applied').textContent = appliedCount;
+    $('stat-followup').textContent = followUpCount;
     $('stat-materials').textContent = materialsCount;
     $('job-count-badge').textContent = total + (total === 1 ? ' job' : ' jobs');
   }
@@ -454,7 +586,7 @@
         throw new Error(data.error || 'Generation failed (HTTP ' + res.status + ')');
       }
 
-      showGenerateResult(data.materials);
+      showGenerateResult(data.materials, data.quality, jobId);
 
       // Update local state
       job.status = 'materials_ready';
@@ -475,12 +607,16 @@
   }
 
   /**
-   * POST /api/applied — toggle applied status.
+   * POST /api/status — set the (extended) application status.
+   * Replaces the old applied-checkbox flow; the legacy POST /api/applied
+   * endpoint remains available for older clients.
    */
-  async function toggleApplied(jobId, checked, checkbox) {
+  async function setJobStatus(jobId, status, select) {
     if (!getToken()) {
       showToast('Please set your auth token first (🔑 Token button).', 'error');
-      if (checkbox) checkbox.checked = !checked; // rollback
+      if (select) select.value = normalizeStatus(
+        (allJobs.find(j => String(j.id) === String(jobId)) || {}).status
+      ) || 'found';
       showModal('token-modal');
       return;
     }
@@ -489,17 +625,17 @@
     if (!job) return;
 
     const prevStatus = job.status;
+    const nextStatus = normalizeStatus(status);
+    if (!nextStatus) return;
+
     // Optimistic UI update
-    job.status = checked ? 'applied' : 'found';
+    job.status = nextStatus;
 
     try {
-      const res = await fetch('/api/applied', {
+      const res = await fetch('/api/status', {
         method: 'POST',
         headers: authHeaders(),
-        body: JSON.stringify({
-          job_id: jobId,
-          applied: checked
-        })
+        body: JSON.stringify({ job_id: jobId, status: nextStatus })
       });
 
       const data = await res.json();
@@ -508,22 +644,47 @@
         throw new Error(data.error || 'Status update failed (HTTP ' + res.status + ')');
       }
 
-      // Update local state with server response
+      // Update local state only from the server's canonical bookkeeping.
       job.status = data.status || job.status;
+      if (Object.prototype.hasOwnProperty.call(data, 'follow_up_due')) {
+        job.follow_up_due = data.follow_up_due || '';
+      }
+      if (Object.prototype.hasOwnProperty.call(data, 'applied_at')) {
+        job.applied_at = data.applied_at || '';
+      }
+      renderTable();
       updateStats();
-      showToast(
-        checked ? 'Marked as applied ✓' : 'Marked as not applied',
-        'success',
-        2000
-      );
+      showToast('Status: ' + statusLabel(job.status) + ' ✓', 'success', 2000);
     } catch (err) {
-      console.error('toggleApplied error:', err);
+      console.error('setJobStatus error:', err);
       // Rollback
       job.status = prevStatus;
-      if (checkbox) checkbox.checked = !checked;
       renderTable();
       updateStats();
       showToast('Failed to update: ' + err.message, 'error');
+    }
+  }
+
+  async function draftFollowup(jobId) {
+    if (!getToken()) {
+      showToast('Please set your auth token first (🔑 Token button).', 'error');
+      showModal('token-modal');
+      return;
+    }
+    const job = allJobs.find(j => String(j.id) === String(jobId));
+    if (!job) return;
+    try {
+      const res = await fetch('/api/followup-draft', {
+        method: 'POST', headers: authHeaders(),
+        body: JSON.stringify({ job_id: jobId, tone: 'professional' })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Follow-up draft failed (HTTP ' + res.status + ')');
+      const draft = window.prompt('Follow-up draft — copy before closing', data.draft || '');
+      if (draft !== null) showToast('Draft ready to copy', 'success');
+    } catch (err) {
+      console.error('draftFollowup error:', err);
+      showToast('Follow-up draft failed: ' + err.message, 'error');
     }
   }
 
@@ -758,8 +919,9 @@
   // EXPOSE GLOBALS (for inline onclick handlers)
   // ═══════════════════════════════════════════════════════════════
   window.generateMaterials = generateMaterials;
-  window.toggleApplied = toggleApplied;
+  window.setJobStatus = setJobStatus;
   window.viewMaterials = viewMaterials;
+  window.draftFollowup = draftFollowup;
 
   // ═══════════════════════════════════════════════════════════════
   // INIT

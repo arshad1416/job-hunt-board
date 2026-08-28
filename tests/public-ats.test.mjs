@@ -69,6 +69,17 @@ test('parses Greenhouse, Lever, Workday, and SmartRecruiters descriptions', () =
     'Build useful systems.',
   );
   assert.equal(
+    parsePublicAtsJob('greenhouse', { content: btoa('<p>Encoded JD</p>'), title: 'Engineer' }).description,
+    'Encoded JD',
+  );
+  const frenchBytes = new TextEncoder().encode('<p>Expérience au Québec</p>');
+  let frenchBinary = '';
+  for (const byte of frenchBytes) frenchBinary += String.fromCharCode(byte);
+  assert.equal(
+    parsePublicAtsJob('greenhouse', { content: btoa(frenchBinary), title: 'Engineer' }).description,
+    'Expérience au Québec',
+  );
+  assert.equal(
     parsePublicAtsJob('lever', {
       descriptionPlain: 'Own the platform.',
       lists: [{ content: '<li>Ship safely</li>' }],

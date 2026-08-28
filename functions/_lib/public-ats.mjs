@@ -9,6 +9,17 @@
 import { htmlToText } from './extract-jd.mjs';
 import { isSafePublicHttpUrl } from './job-url.mjs';
 
+function greenhouseContent(value) {
+  const raw = String(value || '');
+  try {
+    const bytes = Uint8Array.from(atob(raw), (char) => char.charCodeAt(0));
+    const decoded = new TextDecoder('utf-8').decode(bytes);
+    return /<[^>]+>/.test(decoded) ? decoded : raw;
+  } catch {
+    return raw;
+  }
+}
+
 const JSON_HEADERS = { accept: 'application/json' };
 
 function segments(url) {
@@ -43,6 +54,8 @@ function leverPlan(url) {
   };
 }
 
+// Workday and SmartRecruiters resolvers remain explicit and provider-specific.
+// They are public JSON endpoints derived solely from a validated posting URL.
 function workdayPlan(url) {
   const host = url.hostname.match(/^([\w-]+)\.(wd[\w-]*)\.myworkdayjobs\.com$/i);
   if (!host) return null;
@@ -95,7 +108,7 @@ function parseGreenhouse(json) {
     title: json?.title || '',
     location: json?.location?.name || '',
     canonicalUrl: json?.absolute_url || '',
-    description: joinText([json?.content]),
+    description: joinText([greenhouseContent(json?.content)]),
   };
 }
 
