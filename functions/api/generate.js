@@ -18,6 +18,7 @@ import { signedMaterialUrls } from '../_lib/signing.js';
 import { extractJobDescription } from '../_lib/extract-jd.mjs';
 import { fetchPublicAtsJob } from '../_lib/public-ats.mjs';
 import { isSafePublicHttpUrl } from '../_lib/job-url.mjs';
+import { MISSION, RESUME_STANDARDS, COVER_LETTER_STANDARDS, PROFILE_KEY, trackReferenceKey } from '../_lib/job-hunter-skill.mjs';
 
 const LLM_ENDPOINT = 'https://9router.arshadkazi.ca/v1/chat/completions';
 const LLM_MODEL = 'cc/claude-opus-5';
@@ -198,14 +199,65 @@ async function fetchJobDescription(url) {
   }
 }
 
+// ── Candidate materials (job-hunter skill) ──
+/**
+ * Load the candidate's master profile + same-track reference resume from
+ * the private R2 bucket (uploaded once via wrangler; refresh the objects
+ * as the master resume evolves). Returns null when R2 is unavailable —
+ * prompts then fall back to the embedded CANDIDATE_PROFILE summary.
+ * @returns {Promise<{profileYaml: string, referenceResume: string}|null>}
+ */
+async function loadCandidateMaterials(env, track) {
+  if (!env.JOB_MATERIALS_BUCKET) return null;
+  try {
+    const [profileObj, referenceObj] = await Promise.all([
+      env.JOB_MATERIALS_BUCKET.get(PROFILE_KEY),
+      env.JOB_MATERIALS_BUCKET.get(trackReferenceKey(track))
+    ]);
+    if (!profileObj) return null;
+    return {
+      profileYaml: await profileObj.text(),
+      referenceResume: referenceObj ? await referenceObj.text() : null
+    };
+  } catch (err) {
+    console.error('R2 candidate-materials load failed:', err);
+    return null;
+  }
+}
+
+/** The candidate context block shared by both prompts. */
+function candidateBlock(materials) {
+  if (materials) {
+    const parts = [
+      'MASTER CANDIDATE PROFILE (structured YAML — the single source of',
+      'truth for experience, titles, dates, metrics and skills. Ground',
+      'EVERY claim here):',
+      '"""',
+      materials.profileYaml,
+      '"""'
+    ];
+    if (materials.referenceResume) {
+      parts.push(
+        '',
+        'REFERENCE RESUME (same track — match its voice, density and format):',
+        '"""',
+        materials.referenceResume,
+        '"""'
+      );
+    }
+    return parts.join('\n');
+  }
+  return 'CANDIDATE PROFILE (summary fallback — master resume unavailable):\n' + CANDIDATE_PROFILE;
+}
+
 // ── Prompt templates ──
-function resumePrompt(job) {
-  return `You are an expert resume writer. Create a tailored, professional resume in Markdown format
-for the following job posting. Use the candidate profile below and tailor the experience,
-skills, and summary to match the job requirements exactly.
+function resumePrompt(job, materials) {
+  return `You are an expert resume writer applying the job-hunter skill. Create a tailored,
+ATS-friendly resume in Markdown format for the following job posting.
 
-CANDIDATE PROFILE:
-${CANDIDATE_PROFILE}
+${MISSION}
+
+${candidateBlock(materials)}
 
 JOB DETAILS:
 - Title: ${job.title || 'N/A'}
@@ -215,30 +267,29 @@ JOB DETAILS:
 - Track: ${job.track || 'general'}
 - Notes: ${job.notes || 'N/A'}
 ${jobDescriptionBlock(job)}
+${RESUME_STANDARDS}
 INSTRUCTIONS:
-1. Write the resume in clean Markdown (## for sections, ** for emphasis)
-2. Start with a compelling professional summary (3-4 lines) tailored to THIS role
-3. Include relevant experience bullet points that map to the job requirements
-4. List key skills aligned with the position
-5. Mirror the exact terminology, tools, and phrasing used in the job
-   description above — recruiters and ATS filters match on those words
-6. Prioritise the requirements the description states first or repeats
-7. Ground every claim in the candidate profile. Never invent a requirement
-   the description does not mention, and never claim experience the profile
-   does not support
-8. Keep it to one page (concise, impactful bullets)
-9. Do NOT include contact details beyond name and location
-10. Output ONLY the resume markdown — no preamble, no explanations
+1. Open with a 3-4 line PROFESSIONAL SUMMARY tailored to THIS role
+2. SKILLS section: mirror the exact tools, terms and phrasing used in the
+   job description — recruiters and ATS filters match on those words
+3. PROFESSIONAL EXPERIENCE: re-order and re-word bullets from the master
+   profile so the most JD-relevant, quantified achievements lead
+4. Prioritise requirements the description states first or repeats
+5. Ground every claim in the master profile/reference. Never invent a
+   requirement the description does not mention, never claim experience
+   the profile does not support — zero fabrication, ever
+6. One page when converted. Output ONLY the resume markdown — no preamble
 
 Begin:`;
 }
 
-function coverLetterPrompt(job) {
-  return `You are an expert cover letter writer. Create a compelling, tailored cover letter
-in Markdown format for the following job posting.
+function coverLetterPrompt(job, materials) {
+  return `You are an expert cover letter writer applying the job-hunter skill. Create a
+compelling, tailored cover letter in Markdown format for the following job posting.
 
-CANDIDATE PROFILE:
-${CANDIDATE_PROFILE}
+${MISSION}
+
+${candidateBlock(materials)}
 
 JOB DETAILS:
 - Title: ${job.title || 'N/A'}
@@ -248,23 +299,16 @@ JOB DETAILS:
 - Track: ${job.track || 'general'}
 - Notes: ${job.notes || 'N/A'}
 ${jobDescriptionBlock(job)}
+${COVER_LETTER_STANDARDS}
 INSTRUCTIONS:
-1. Write in a professional but warm tone
-2. Address it to the hiring manager (use "Dear Hiring Manager" if no name)
-3. Open with a strong hook referencing the specific role and company
-4. Highlight 2-3 key achievements most relevant to THIS job, chosen to answer
-   the requirements the job description actually emphasises
-5. Reference at least one concrete detail from the job description so the
+1. Professional but warm tone; 'Dear Hiring Manager' if no name is known
+2. Reference at least one concrete detail from the job description so the
    letter could not have been written from the job title alone
-6. Show genuine enthusiasm and cultural fit
-7. Never claim experience the candidate profile does not support
-8. Close with a clear call to action
-9. Keep it to 3-4 paragraphs (under 350 words)
-10. Output ONLY the cover letter — no preamble, no explanations
+3. Never claim experience the master profile does not support
+4. Output ONLY the cover letter — no preamble, no explanations
 
 Begin:`;
 }
-
 /**
  * Call Claude Opus 5 via the 9Router OpenAI-compatible chat completions API.
  * 9Router streams by default, so `stream: false` is required to get a plain
@@ -401,9 +445,10 @@ export async function onRequestPost(context) {
   // ── 4. Call Claude Opus 5 for resume + cover letter ──
   let resumeMd, coverMd;
   try {
+    const materials = await loadCandidateMaterials(env, job.track);
     [resumeMd, coverMd] = await Promise.all([
-      callLLM(env.NINEROUTER_API_KEY, resumePrompt(job)),
-      callLLM(env.NINEROUTER_API_KEY, coverLetterPrompt(job))
+      callLLM(env.NINEROUTER_API_KEY, resumePrompt(job, materials)),
+      callLLM(env.NINEROUTER_API_KEY, coverLetterPrompt(job, materials))
     ]);
   } catch (err) {
     console.error('LLM generation error:', err);

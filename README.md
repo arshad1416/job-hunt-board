@@ -101,6 +101,13 @@ If `DASHBOARD_AUTH_TOKEN` is unset on the server, every non-public route fails c
 - **Auth:** `Authorization: Bearer <NINEROUTER_API_KEY>`
 - Requests must set `stream: false` — 9Router streams by default.
 - Called by `/api/generate` to produce `resume.md` and `cover_letter.md` per job.
+- **Prompts follow the `job-hunter` skill** (hermes-skills repo, `profiles/job-hunter`):
+  each generation tailors against the structured master profile and a same-track
+  reference resume loaded from private R2 objects
+  (`assets/resume_profile.yaml`, `assets/master_resume_{ev,ai}.md` — refresh via
+  `npx wrangler r2 object put`), enforces the skill's ATS output standards and
+  truthful-only ground rules, and falls back to an embedded summary profile when
+  R2 is unavailable.
 
 ---
 
