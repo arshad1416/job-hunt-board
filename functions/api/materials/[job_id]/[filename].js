@@ -5,14 +5,16 @@
    enumerating numeric job_ids returns 401, not a resume.
 
    Serves files from R2 bucket JOB_MATERIALS_BUCKET.
+   Markdown resume and cover-letter responses download as named attachments
+   so they can be opened in Word/Google Docs or converted to PDF before sharing.
    Path params: job_id (int), filename (allow-listed)
    ═══════════════════════════════════════════════════════════════ */
 
 // Allowed filenames (prevents R2 enumeration)
 const ALLOWED_FILES = {
-  'resume.md':       'text/markdown; charset=utf-8',
-  'cover_letter.md': 'text/markdown; charset=utf-8',
-  'job_details.json':'application/json; charset=utf-8'
+  'resume.md':       { type: 'text/markdown; charset=utf-8', disposition: 'attachment', download: 'resume.md' },
+  'cover_letter.md': { type: 'text/markdown; charset=utf-8', disposition: 'attachment', download: 'cover_letter.md' },
+  'job_details.json': { type: 'application/json; charset=utf-8', disposition: 'inline', download: 'job_details.json' }
 };
 
 export async function onRequestGet(context) {
@@ -22,7 +24,7 @@ export async function onRequestGet(context) {
   const filename = params.filename;
 
   // ── Validate filename against allow-list ──
-  if (!ALLOWED_FILES.hasOwnProperty(filename)) {
+  if (!Object.prototype.hasOwnProperty.call(ALLOWED_FILES, filename)) {
     return new Response(
       JSON.stringify({ error: 'Forbidden: file type not allowed' }),
       {
@@ -69,10 +71,12 @@ export async function onRequestGet(context) {
   }
 
   // ── Stream the file with correct content-type ──
-  const contentType = ALLOWED_FILES[filename];
+  const file = ALLOWED_FILES[filename];
   const headers = new Headers();
-  headers.set('Content-Type', contentType);
-  headers.set('Content-Disposition', `inline; filename="${filename}"`);
+  headers.set('Content-Type', file.type);
+  // Markdown is the source format; downloads are explicitly named so it can
+  // be opened in Word/Google Docs or converted to PDF before sharing.
+  headers.set('Content-Disposition', `${file.disposition}; filename="${file.download}"`);
   // Personal documents: never cached by shared caches, never indexed.
   headers.set('Cache-Control', 'private, no-store');
   headers.set('X-Content-Type-Options', 'nosniff');
