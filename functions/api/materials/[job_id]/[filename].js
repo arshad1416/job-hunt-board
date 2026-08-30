@@ -42,7 +42,7 @@ export async function onRequestGet(context) {
 
   // ── Fetch from R2 ──
   const version = params.version;
-  if (version && !/^[a-f0-9]{64}$/i.test(version)) return new Response(JSON.stringify({ error: 'Invalid material version' }), { status: 400, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'X-Robots-Tag': 'noindex, nofollow' } });
+  if (version && !/^[a-f0-9]{64}$/i.test(version)) return routeError('Invalid material version', 400);
   let material = null;
   if (version) {
     const normalizedVersion = version.toLowerCase();
