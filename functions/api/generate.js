@@ -981,8 +981,8 @@ export async function onRequestPost(context) {
     env.JOB_MATERIALS_BUCKET.head(stagedKeys.details),
     env.JOB_MATERIALS_BUCKET.head(stagedKeys.manifest)
   ]);
-  const manifestObj = await env.JOB_MATERIALS_BUCKET.get(materialKeys(jobId, materialVersion).manifest);
-  const [resumeObj, coverObj, detailsObj] = await Promise.all([env.JOB_MATERIALS_BUCKET.get(materialKeys(jobId, materialVersion).resume), env.JOB_MATERIALS_BUCKET.get(materialKeys(jobId, materialVersion).coverLetter), env.JOB_MATERIALS_BUCKET.get(materialKeys(jobId, materialVersion).details)]);
+  const manifestObj = await env.JOB_MATERIALS_BUCKET.get(stagedKeys.manifest);
+  const [resumeObj, coverObj, detailsObj] = await Promise.all([env.JOB_MATERIALS_BUCKET.get(stagedKeys.resume), env.JOB_MATERIALS_BUCKET.get(stagedKeys.coverLetter), env.JOB_MATERIALS_BUCKET.get(stagedKeys.details)]);
   let parsedManifest = null;
   try { parsedManifest = manifestObj ? JSON.parse(await manifestObj.text()) : null; } catch {}
   const sourceSetExists = isCompleteSourceSet({ resume: resumeObj, coverLetter: coverObj, details: detailsObj, manifest: manifestObj });
