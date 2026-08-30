@@ -33,6 +33,7 @@ async function resetFailedMaterial(env, { jobId, version }) {
 }
 
 async function claimMaterial(env, { jobId, version, leaseSeconds = LEASE_SECONDS, leaseToken = secureToken() }) {
+  await resetFailedMaterial(env, { jobId, version });
   const result = await tursoExecute(env,
     "UPDATE material_versions SET state='claimed', lease_token=?, lease_expires_at=datetime('now', '+' || ? || ' seconds'), attempt_count=attempt_count+1, updated_at=datetime('now'), error_code=NULL, error_message=NULL WHERE job_id=? AND version=? AND (state='pending' OR (state='claimed' AND lease_expires_at <= datetime('now')))",
     [leaseToken, leaseSeconds, jobId, version]);
