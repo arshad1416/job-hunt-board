@@ -80,7 +80,8 @@ async function authorize(request, env, url, method, cors) {
         env,
         match[1],
         match[3],
-        url.searchParams.get('token')
+        url.searchParams.get('token'),
+        match[2] || null
       );
       if (ok) return null;
     }

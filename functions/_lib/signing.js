@@ -99,7 +99,7 @@ async function verifyMaterialsToken(env, jobId, filename, token, materialVersion
  */
 async function signedMaterialUrls(env, jobId, ttlSeconds = DEFAULT_TTL_SECONDS, materialVersion = null) {
   const prefix = materialVersion ? `/api/materials/${jobId}/versions/${materialVersion}` : `/api/materials/${jobId}`;
-  const [resume, cover, details] = await Promise.all(MATERIAL_FILES.map(f => signMaterialsToken(env, jobId, f, ttlSeconds)));
+  const [resume, cover, details] = await Promise.all(MATERIAL_FILES.map(f => signMaterialsToken(env, jobId, f, ttlSeconds, materialVersion)));
   return {
     resume: `${prefix}/resume.md?token=${resume}`,
     cover_letter: `${prefix}/cover_letter.md?token=${cover}`,
