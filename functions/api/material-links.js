@@ -33,7 +33,10 @@ export async function onRequestPost(context) {
   try {
     const current = await getCurrentMaterial(env, String(jobId));
     if (!current) return json({ error: 'Verified materials are not available' }, 404);
+    const pdf = await getMaterialPdfState(env, String(jobId), current.version, env.JOB_MATERIALS_BUCKET);
     materials = await signedMaterialUrls(env, String(jobId), DEFAULT_TTL_SECONDS, current.version);
+    materials.pdf_state = pdf.state;
+    if (!pdf.ready) { delete materials.resume_pdf; delete materials.cover_letter_pdf; }
   } catch (err) {
     console.error('Signing error:', err);
     return json({ error: 'Server signing key not configured' }, 503);
