@@ -36,6 +36,8 @@ export async function onRequestPost(context) {
     const pdf = await getMaterialPdfState(env, String(jobId), current, env.JOB_MATERIALS_BUCKET);
     materials = await signedMaterialUrls(env, String(jobId), DEFAULT_TTL_SECONDS, current.version, pdf.ready);
     materials.pdf_state = pdf.state;
+    materials.pdf_ready = Boolean(pdf.ready);
+    materials.pdf_error = pdf.state === 'failed' ? 'PDF rendering failed' : null;
     if (!pdf.ready) { delete materials.resume_pdf; delete materials.cover_letter_pdf; }
   } catch (err) {
     console.error('Signing error:', err);
