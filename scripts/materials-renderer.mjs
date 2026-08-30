@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import os from 'node:os';
+import {execFileSync} from 'node:child_process';
 
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export function safeMarkdown(input) {
@@ -27,3 +29,5 @@ export function hardGates({type, text='', pages, tofu=false, overflow=false, cli
 }
 export function atomicWrite(file, content) { const temp=file+'.tmp-'+process.pid; fs.writeFileSync(temp,content,{encoding:'utf8',flag:'wx'}); try { fs.renameSync(temp,file); } catch(e) { fs.rmSync(temp,{force:true}); throw e; } }
 export function loadTemplates(root=path.resolve('templates')) { return {resume:fs.readFileSync(path.join(root,'resume.ats.html'),'utf8'),cover:fs.readFileSync(path.join(root,'cover-letter.html'),'utf8')}; }
+export function chromiumPath(){for(const p of ['chromium','chromium-browser','google-chrome'])try{execFileSync(p,['--version'],{stdio:'ignore'});return p}catch{}return null;}
+export function renderPdf(html,{browser=chromiumPath(),pdfinfo='pdfinfo',pdftotext='pdftotext',outputDir=os.tmpdir()}={}){if(!browser)return {ok:false,available:false,error:'Chromium unavailable'};const d=fs.mkdtempSync(path.join(outputDir,'materials-')),h=path.join(d,'input.html'),p=path.join(d,'output.pdf');try{fs.writeFileSync(h,html);execFileSync(browser,['--headless','--no-sandbox','--disable-gpu','--disable-background-networking','--disable-default-apps','--disable-extensions','--host-resolver-rules=MAP * ~NOTFOUND','--print-to-pdf='+p,'file://'+h],{stdio:'pipe'});const info=execFileSync(pdfinfo,[p],{encoding:'utf8'}),text=execFileSync(pdftotext,[p,'-'],{encoding:'utf8'}),pages=Number(info.match(/^Pages:\s*(\d+)/m)?.[1]);return {ok:true,available:true,pdf:p,pages,text,networkRequests:0};}catch(e){return {ok:false,available:true,error:e.message};}}
