@@ -78,6 +78,8 @@ async function setCurrentMaterial(env, jobId, version) {
   return current?.version === version;
 }
 
+async function getMaterialPdfState(env, jobId, version, bucket) { const rows=await tursoQuery(env, "SELECT state FROM render_jobs r JOIN material_versions m ON m.id=r.material_version_id WHERE m.job_id=? AND m.version=?", [jobId,version]); if(rows.length<2||!rows.every(r=>r.state==='succeeded')) return {state:rows.some(r=>r.state==='failed')?'failed':'pending',ready:false}; const p='materials/'+jobId+'/versions/'+version; const [a,b]=await Promise.all([bucket?.head?.(p+'/resume.pdf'),bucket?.head?.(p+'/cover_letter.pdf')]); return {state:a&&b?'available':'pending',ready:Boolean(a&&b)} }
+
 async function getCurrentMaterial(env, jobId) {
   const rows = await tursoQuery(env, 'SELECT mv.* FROM material_current mc JOIN material_versions mv ON mv.id=mc.material_version_id WHERE mc.job_id=? AND mv.state=\'succeeded\' AND mv.source_exists=1 AND mv.hard_gates_pass=1 LIMIT 1', [jobId]);
   return rows[0] || null;
@@ -87,4 +89,4 @@ async function markCurrentIfAbsent(env, jobId, version) {
   return setCurrentMaterial(env, jobId, version);
 }
 
-export { LEASE_SECONDS, ensureMaterialVersion, getMaterialVersion, claimMaterial, markMaterialSucceeded, markMaterialFailed, getCurrentSuccessfulMaterial, projectMaterialsReady, setCurrentMaterial, getCurrentMaterial, resetFailedMaterial };
+export { LEASE_SECONDS, getMaterialPdfState, ensureMaterialVersion, getMaterialVersion, claimMaterial, markMaterialSucceeded, markMaterialFailed, getCurrentSuccessfulMaterial, projectMaterialsReady, setCurrentMaterial, getCurrentMaterial, resetFailedMaterial };
