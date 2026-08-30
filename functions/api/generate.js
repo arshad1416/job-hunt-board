@@ -28,6 +28,7 @@ import {
   isCompleteSourceSet,
   legacyMaterialKeys,
   materialKeys,
+  sha256Hex,
   versionFor
 } from '../_lib/material-state.js';
 import { extractJobDescription } from '../_lib/extract-jd.mjs';
@@ -82,29 +83,6 @@ const REPAIR_TEMPERATURE = 0.2;
 const JD_FETCH_UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 ' +
   '(KHTML, like Gecko) Chrome/125.0 Safari/537.36';
-
-// ── Candidate profile (embedded — same as Pi-side resume_profile.yaml) ──
-const CANDIDATE_PROFILE = `
-Name: Arshad Kazi
-Location: Toronto, Ontario, Canada
-Target roles: EV Commercial (Regional Sales Manager, Head of Sales, Commercial Director)
-              AI/Engineering (AI Engineer, ML Engineer, Full Stack Engineer)
-
-EV Commercial highlights:
-- 8+ years in automotive / EV sales leadership and dealer network development
-- Launched EV OEM dealer networks across Ontario and Eastern Canada
-- Proven track record scaling revenue from $0 to $20M+ in emerging EV markets
-- Deep relationships with BYD, Geely, Zeekr, and other Chinese EV OEMs entering Canada
-
-AI/Engineering highlights:
-- Full-stack development (Python, TypeScript, React, Node.js, Cloudflare Workers)
-- Machine learning and LLM integration (OpenAI, fine-tuning, RAG pipelines)
-- Built production AI systems serving 10K+ users
-- Cloud architecture (AWS, Cloudflare, Turso/libSQL)
-
-Strengths: cross-functional leadership, go-to-market strategy, technical depth,
-bilingual (English/Hindi/Urdu), willing to relocate or travel extensively.
-`;
 
 // ── Job description handling ──
 
@@ -285,7 +263,7 @@ function candidateBlock(materials) {
     }
     return parts.join('\n');
   }
-  return 'CANDIDATE PROFILE (summary fallback — master resume unavailable):\n' + CANDIDATE_PROFILE;
+  throw new Error('Candidate profile is not configured');
 }
 
 // ── Prompt templates ──
@@ -400,7 +378,7 @@ async function callLLM(apiKey, prompt, options = {}) {
 function qualitySources(job, materials) {
   return {
     jdText: jobDescriptionText(job) || '',
-    profileText: (materials && materials.profileYaml) || CANDIDATE_PROFILE,
+    profileText: materials?.profileYaml || '',
     referenceText: (materials && materials.referenceResume) || null,
   };
 }
@@ -663,10 +641,11 @@ async function tryReuseMaterials(env, job, jobId) {
       }),
       env.JOB_MATERIALS_BUCKET.put(destination.details, reusedDetails, {
         httpMetadata: { contentType: 'application/json' }
-      })
+      }),
+      env.JOB_MATERIALS_BUCKET.put(destination.manifest, JSON.stringify({ job_id: jobId, profile: 'verified', template: 'source-v1', renderer: 'source-v1', version, artifacts: { resume: await sha256Hex(resumeText), cover_letter: await sha256Hex(coverText), job_details: await sha256Hex(reusedDetails) } }), { httpMetadata: { contentType: 'application/json' } })
     ]);
 
-    const complete = { resume: true, coverLetter: true, details: true };
+    const complete = { resume: true, coverLetter: true, details: true, manifest: true };
     const recorded = await markMaterialSucceeded(env, {
       jobId,
       version,
@@ -850,7 +829,13 @@ export async function onRequestPost(context) {
       templateRevision: 'source-v1',
       rendererRevision: 'source-v1'
     });
-    await ensureMaterialVersion(env, { jobId, version: materialVersion });
+    await ensureMaterialVersion(env, {
+      jobId,
+      version: materialVersion,
+      profileRevision: 'profile-v1',
+      templateRevision: 'source-v1',
+      rendererRevision: 'source-v1'
+    });
     const claim = await claimMaterial(env, { jobId, version: materialVersion });
     if (!claim.claimed) {
       return json({ error: 'Material generation is already in progress' }, 409);
@@ -979,6 +964,7 @@ export async function onRequestPost(context) {
     }, null, 2);
 
     try {
+      const manifest = JSON.stringify({ job_id: jobId, profile: 'verified', template: 'source-v1', renderer: 'source-v1', version: materialVersion, artifacts: { resume: await sha256Hex(resumeMd), cover_letter: await sha256Hex(coverMd), job_details: await sha256Hex(jobDetails) } });
       await Promise.all([
         env.JOB_MATERIALS_BUCKET.put(key.resume, resumeMd, {
           httpMetadata: { contentType: 'text/markdown; charset=utf-8' }
@@ -987,6 +973,9 @@ export async function onRequestPost(context) {
           httpMetadata: { contentType: 'text/markdown; charset=utf-8' }
         }),
         env.JOB_MATERIALS_BUCKET.put(key.details, jobDetails, {
+          httpMetadata: { contentType: 'application/json' }
+        }),
+        env.JOB_MATERIALS_BUCKET.put(key.manifest, manifest, {
           httpMetadata: { contentType: 'application/json' }
         })
       ]);
@@ -1000,9 +989,10 @@ export async function onRequestPost(context) {
   const complete = await Promise.all([
     env.JOB_MATERIALS_BUCKET.head(materialKeys(jobId, materialVersion).resume),
     env.JOB_MATERIALS_BUCKET.head(materialKeys(jobId, materialVersion).coverLetter),
-    env.JOB_MATERIALS_BUCKET.head(materialKeys(jobId, materialVersion).details)
+    env.JOB_MATERIALS_BUCKET.head(materialKeys(jobId, materialVersion).details),
+    env.JOB_MATERIALS_BUCKET.head(materialKeys(jobId, materialVersion).manifest)
   ]);
-  const sourceSetExists = isCompleteSourceSet({ resume: complete[0], coverLetter: complete[1], details: complete[2] });
+  const sourceSetExists = isCompleteSourceSet({ resume: complete[0], coverLetter: complete[1], details: complete[2], manifest: complete[3] });
   if (!sourceSetExists) {
     await markMaterialFailed(env, { jobId, version: materialVersion, leaseToken: materialLeaseToken, errorCode: 'source_incomplete', errorMessage: 'Versioned source objects are incomplete after write' });
     return json({ error: 'Stored materials are incomplete' }, 500);

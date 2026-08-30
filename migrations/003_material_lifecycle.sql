@@ -4,7 +4,7 @@
 
 CREATE TABLE IF NOT EXISTS material_versions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  job_id INTEGER NOT NULL,
+  job_id INTEGER NOT NULL REFERENCES applications(id),
   version TEXT NOT NULL,
   state TEXT NOT NULL DEFAULT 'pending'
     CHECK (state IN ('pending', 'claimed', 'succeeded', 'failed')),
@@ -45,7 +45,9 @@ CREATE TABLE IF NOT EXISTS render_jobs (
   error_message TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-  completed_at TEXT
+  completed_at TEXT,
+  FOREIGN KEY (material_version_id) REFERENCES material_versions(id),
+  UNIQUE (material_version_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_render_jobs_claimable

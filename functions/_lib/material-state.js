@@ -48,7 +48,7 @@ function claimMatches(material, leaseToken, now = Date.now()) {
 }
 
 function isCompleteSourceSet(objects) {
-  return Boolean(objects?.resume && objects?.coverLetter && objects?.details);
+  return Boolean(objects?.resume && objects?.coverLetter && objects?.details && objects?.manifest);
 }
 
 function normalizeForVersion(value) {
