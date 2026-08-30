@@ -7,7 +7,9 @@ import {
   isSuccessfulMaterial,
   claimMatches,
   materialKeys,
-  legacyMaterialKeys
+  legacyMaterialKeys,
+  validManifest,
+  validateManifestBytes
 } from '../functions/_lib/material-state.js';
 
 const now = Date.parse('2026-01-01T00:00:00Z');

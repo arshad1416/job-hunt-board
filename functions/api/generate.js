@@ -680,6 +680,8 @@ async function tryReuseMaterials(env, job, jobId) {
       return null;
     }
     leaseToken = null;
+    const currentSet = await setCurrentMaterial(env, jobId, version);
+    if (!currentSet) { const current = await getCurrentMaterial(env, jobId); if (!current) return null; version = current.version; }
     await markMaterialsReady(env, jobId, 'materials reused', version);
 
     return { reused_from_job_id: best.id };
@@ -742,6 +744,7 @@ export async function onRequestPost(context) {
       existingSources = null;
     }
     if (isCompleteSourceSet(existingSources)) {
+      return json({ error: 'Legacy materials require verified versioned migration' }, 409);
       // Existing legacy sets remain readable, but readiness still requires a
       // successful lifecycle record; Task 4 will make versioned delivery the
       // canonical path.
