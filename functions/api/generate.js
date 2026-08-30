@@ -20,7 +20,6 @@ import {
   claimMaterial,
   markMaterialSucceeded,
   markMaterialFailed,
-  getCurrentSuccessfulMaterial,
   projectMaterialsReady,
   setCurrentMaterial,
   getCurrentMaterial
@@ -28,6 +27,7 @@ import {
 import {
   hardGatesPass,
   isCompleteSourceSet,
+  validManifest,
   legacyMaterialKeys,
   materialKeys,
   sha256Hex,
@@ -646,7 +646,7 @@ async function tryReuseMaterials(env, job, jobId) {
       env.JOB_MATERIALS_BUCKET.put(destination.details, reusedDetails, {
         httpMetadata: { contentType: 'application/json' }
       }),
-      env.JOB_MATERIALS_BUCKET.put(destination.manifest, JSON.stringify({ job_id: jobId, profile: 'verified', template: 'source-v1', renderer: 'source-v1', version, artifacts: { resume: await sha256Hex(resumeText), cover_letter: await sha256Hex(coverText), job_details: await sha256Hex(reusedDetails) } }), { httpMetadata: { contentType: 'application/json' } })
+      env.JOB_MATERIALS_BUCKET.put(destination.manifest, JSON.stringify({ job_id: jobId, profile_revision: 'verified', template_revision: 'source-v1', renderer_revision: 'source-v1', version, artifacts: { resume: await sha256Hex(resumeText), cover_letter: await sha256Hex(coverText), job_details: await sha256Hex(reusedDetails) } }), { httpMetadata: { contentType: 'application/json' } })
     ]);
 
     const complete = { resume: true, coverLetter: true, details: true, manifest: true };
@@ -968,7 +968,7 @@ export async function onRequestPost(context) {
     }, null, 2);
 
     try {
-      const manifest = JSON.stringify({ job_id: jobId, profile: 'verified', template: 'source-v1', renderer: 'source-v1', version: materialVersion, artifacts: { resume: await sha256Hex(resumeMd), cover_letter: await sha256Hex(coverMd), job_details: await sha256Hex(jobDetails) } });
+      const manifest = JSON.stringify({ job_id: jobId, profile_revision: 'verified', template_revision: 'source-v1', renderer_revision: 'source-v1', version: materialVersion, artifacts: { resume: await sha256Hex(resumeMd), cover_letter: await sha256Hex(coverMd), job_details: await sha256Hex(jobDetails) } });
       await Promise.all([
         env.JOB_MATERIALS_BUCKET.put(key.resume, resumeMd, {
           httpMetadata: { contentType: 'text/markdown; charset=utf-8' }
@@ -996,7 +996,10 @@ export async function onRequestPost(context) {
     env.JOB_MATERIALS_BUCKET.head(materialKeys(jobId, materialVersion).details),
     env.JOB_MATERIALS_BUCKET.head(materialKeys(jobId, materialVersion).manifest)
   ]);
-  const sourceSetExists = isCompleteSourceSet({ resume: complete[0], coverLetter: complete[1], details: complete[2], manifest: complete[3] });
+  const manifestObj = await env.JOB_MATERIALS_BUCKET.get(materialKeys(jobId, materialVersion).manifest);
+  let parsedManifest = null;
+  try { parsedManifest = manifestObj ? JSON.parse(await manifestObj.text()) : null; } catch {}
+  const sourceSetExists = isCompleteSourceSet({ resume: complete[0], coverLetter: complete[1], details: complete[2], manifest: complete[3] }) && parsedManifest && validManifest(parsedManifest, { jobId, version: materialVersion, hashes: { resume: parsedManifest.artifacts.resume, cover_letter: parsedManifest.artifacts.cover_letter, job_details: parsedManifest.artifacts.job_details } });
   if (!sourceSetExists) {
     await markMaterialFailed(env, { jobId, version: materialVersion, leaseToken: materialLeaseToken, errorCode: 'source_incomplete', errorMessage: 'Versioned source objects are incomplete after write' });
     return json({ error: 'Stored materials are incomplete' }, 500);
