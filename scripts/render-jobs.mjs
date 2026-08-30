@@ -10,8 +10,10 @@ export function claimSql(){return "UPDATE render_jobs SET state='claimed',lease_
 export async function processRenderJob(row, { env, dryRun = false, execute = tursoExecute, query = tursoQuery, bucket, renderer } = {}) {
   if (dryRun) return { id: row.id, state: row.state, dryRun: true };
   const { id, job_id: jobId, version, lease_token: token, lease_expires_at: expiry, attempt_count: attempt } = row;
+  if (!token || !expiry || !attempt) return { id, state: 'stale' };
   const prefix = String(row.source_artifact_prefix || '');
   // Attempt-unique prefixes remain immutable while this lease is active.
+  const claimedExpiry = row.lease_expires_at;
   const parts = prefix.split('/');
   const validPrefix = row.document === 'pair' && parts.length === 5 && parts[0] === 'materials' && parts[1] === String(jobId) && parts[2] === 'versions' && parts[3] === String(version).toLowerCase() && parts[4] === `attempt-${token}` && /^[A-Za-z0-9_-]{1,80}$/.test(token) && /^\d+$/.test(parts[1]) && /^[a-f0-9]{64}$/.test(parts[3]);
   const leaseLive = async () => {
