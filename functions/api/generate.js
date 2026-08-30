@@ -673,7 +673,7 @@ async function tryReuseMaterials(env, job, jobId) {
       jobId,
       version,
       leaseToken,
-      artifactPrefix: 'materials/' + jobId + '/versions/' + version,
+      artifactPrefix: staged.resume.replace('/resume.md', ''),
       sourceExists: isCompleteSourceSet(complete),
       hardGatesPass: hardGatesPass(details.quality)
     });

@@ -62,7 +62,7 @@ export async function onRequestGet(context) {
   // ── Fetch from R2 ──
   const version = params.version;
   if (version && !/^[a-f0-9]{64}$/i.test(version)) return new Response(JSON.stringify({ error: 'Invalid material version' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
-  if (version) { const material = await getMaterialVersion(env, jobId, version); if (!material || material.state !== 'succeeded' || !material.source_exists || !material.hard_gates_pass || !material.artifact_prefix?.includes('/versions/')) return new Response(JSON.stringify({ error: 'Unverified material version is unavailable' }), { status: 404, headers: { 'Content-Type': 'application/json' } }); }
+  if (version) { const material = await getMaterialVersion(env, jobId, version); if (!material || material.state !== 'succeeded' || !material.source_exists || !material.hard_gates_pass || material.artifact_prefix !== `materials/${jobId}/versions/${version}/attempt-${material.artifact_prefix.split('/attempt-')[1]}`) return new Response(JSON.stringify({ error: 'Unverified material version is unavailable' }), { status: 404, headers: { 'Content-Type': 'application/json' } }); }
   const key = version && /^[a-f0-9]{64}$/i.test(version) ? `materials/${jobId}/versions/${version.toLowerCase()}/${filename}` : `materials/${jobId}/${filename}`;
   const object = await env.JOB_MATERIALS_BUCKET.get(key);
 
