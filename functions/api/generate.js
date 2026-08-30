@@ -653,17 +653,19 @@ async function tryReuseMaterials(env, job, jobId) {
     }, null, 2);
 
     const destination = materialKeys(jobId, version);
+    const stageToken = String(leaseToken).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 80);
+    const staged = Object.fromEntries(Object.entries(destination).map(([name, key]) => [name, key.replace(`/versions/${version}/`, `/versions/${version}/attempt-${stageToken}/`)]));
     await Promise.all([
-      env.JOB_MATERIALS_BUCKET.put(destination.resume, resumeText, {
+      env.JOB_MATERIALS_BUCKET.put(staged.resume, resumeText, {
         httpMetadata: { contentType: 'text/markdown; charset=utf-8' }
       }),
-      env.JOB_MATERIALS_BUCKET.put(destination.coverLetter, coverText, {
+      env.JOB_MATERIALS_BUCKET.put(staged.coverLetter, coverText, {
         httpMetadata: { contentType: 'text/markdown; charset=utf-8' }
       }),
-      env.JOB_MATERIALS_BUCKET.put(destination.details, reusedDetails, {
+      env.JOB_MATERIALS_BUCKET.put(staged.details, reusedDetails, {
         httpMetadata: { contentType: 'application/json' }
       }),
-      env.JOB_MATERIALS_BUCKET.put(destination.manifest, JSON.stringify({ job_id: jobId, profile_revision: 'verified', template_revision: 'source-v1', renderer_revision: 'source-v1', version, artifacts: { resume: await sha256Hex(resumeText), cover_letter: await sha256Hex(coverText), job_details: await sha256Hex(reusedDetails) } }), { httpMetadata: { contentType: 'application/json' } })
+      env.JOB_MATERIALS_BUCKET.put(staged.manifest, JSON.stringify({ job_id: jobId, profile_revision: 'verified', template_revision: 'source-v1', renderer_revision: 'source-v1', version, artifacts: { resume: await sha256Hex(resumeText), cover_letter: await sha256Hex(coverText), job_details: await sha256Hex(reusedDetails) } }), { httpMetadata: { contentType: 'application/json' } })
     ]);
 
     const complete = { resume: true, coverLetter: true, details: true, manifest: true };
