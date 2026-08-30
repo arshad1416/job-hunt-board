@@ -684,7 +684,7 @@ async function tryReuseMaterials(env, job, jobId) {
     if (!currentSet) { const current = await getCurrentMaterial(env, jobId); if (!current) return null; version = current.version; }
     await markMaterialsReady(env, jobId, 'materials reused', version);
 
-    return { reused_from_job_id: best.id };
+    return { reused_from_job_id: best.id, version };
   } catch (err) {
     // Schema drift, R2 hiccup, anything else — reuse is an optimisation,
     // never a failure path.
@@ -727,6 +727,9 @@ export async function onRequestPost(context) {
     return json({ error: 'Job not found: ' + jobId }, 404);
   }
 
+  const existingCurrent = await getCurrentMaterial(env, jobId);
+  if (existingCurrent) return json({ success: true, job_id: jobId, cached: true, materials: await signedMaterialUrls(env, jobId, undefined, existingCurrent.version) });
+
   // ── 3. Check if the complete legacy source set already exists ──
   // A lone resume is a partial upload, not a ready artifact.
   // Versioned artifacts are the canonical path; legacy objects are read-only.
@@ -744,6 +747,7 @@ export async function onRequestPost(context) {
       existingSources = null;
     }
     if (isCompleteSourceSet(existingSources)) {
+      // Legacy artifacts are read-only during Task 2; never synthesize success.
       return json({ error: 'Legacy materials require verified versioned migration' }, 409);
       // Existing legacy sets remain readable, but readiness still requires a
       // successful lifecycle record; Task 4 will make versioned delivery the
