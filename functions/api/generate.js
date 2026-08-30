@@ -17,6 +17,7 @@ import { tursoQuery, tursoExecute } from '../_lib/turso.js';
 import { signedMaterialUrls } from '../_lib/signing.js';
 import {
   ensureMaterialVersion,
+  getMaterialVersion,
   claimMaterial,
   markMaterialSucceeded,
   enqueueRenderJob,
@@ -683,6 +684,8 @@ async function tryReuseMaterials(env, job, jobId) {
       return null;
     }
     leaseToken = null;
+    const materialRow = await getMaterialVersion(env, jobId, version);
+    await enqueueRenderJob(env, { materialVersionId: materialRow?.id, artifactPrefix: staged.resume.replace('/resume.md', '') });
     const currentSet = await setCurrentMaterial(env, jobId, version);
     if (!currentSet) { const current = await getCurrentMaterial(env, jobId); if (!current) return null; version = current.version; }
     await markMaterialsReady(env, jobId, 'materials reused', version);
@@ -1011,6 +1014,7 @@ export async function onRequestPost(context) {
     hardGatesPass: hardGatesPass(quality)
   });
   if (!recorded) return json({ error: 'Material generation lease expired' }, 409);
+  await enqueueRenderJob(env, { materialVersionId: (await getMaterialVersion(env, jobId, materialVersion))?.id, artifactPrefix: stagedKeys.resume.replace('/resume.md', '') });
   const currentSet = await setCurrentMaterial(env, jobId, materialVersion);
   if (!currentSet) {
     const current = await getCurrentMaterial(env, jobId);
