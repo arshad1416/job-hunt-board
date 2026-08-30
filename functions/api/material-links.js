@@ -9,7 +9,7 @@
    ═══════════════════════════════════════════════════════════════ */
 
 import { signedMaterialUrls, DEFAULT_TTL_SECONDS } from '../_lib/signing.js';
-import { getCurrentMaterial } from '../_lib/material-store.js';
+import { getCurrentMaterial, getMaterialPdfState } from '../_lib/material-store.js';
 
 export async function onRequestPost(context) {
   const { request, env } = context;
