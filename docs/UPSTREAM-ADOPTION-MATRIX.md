@@ -4,13 +4,13 @@ This matrix records the evidence used for the selective, safety-first adoption p
 
 | Capability | Evidence | Board state | Decision | Rationale |
 |---|---|---|---|---|
-| ATS-safe deterministic PDF output | docs/UPSTREAM-ADOPTION-PLAN.md § Review basis; local functions/_lib/cv-gates.js | Markdown only; gates exist | Adopt | Deterministic rendering and extracted-text gates are testable and preserve truthfulness. |
-| Fixed resume/cover templates | docs/UPSTREAM-ADOPTION-PLAN.md Task 3 | Not present | Adopt | Fixed layouts reduce layout drift and injection risk. |
+| ATS-safe deterministic PDF output | https://github.com/MadsLorentzen/ai-job-search (LaTeX/Python helpers); local functions/_lib/cv-gates.js | Markdown only; gates exist | Adopt | Deterministic rendering and extracted-text gates are testable and preserve truthfulness. |
+| Fixed resume/cover templates | https://github.com/MadsLorentzen/ai-job-search (template helpers); docs/UPSTREAM-ADOPTION-PLAN.md Task 3 | Not present | Adopt | Fixed layouts reduce layout drift and injection risk. |
 | Immutable artifact versions | docs/UPSTREAM-ADOPTION-PLAN.md Data and state contracts | Flat R2 keys currently overwrite | Adopt | Hash-keyed versions preserve rollback and auditability. |
 | Evidence-grounded fact checks | functions/_lib/cv-gates.js, functions/_lib/generation-quality.js | Present | Adopt | Retain existing correctness seam; do not infer candidate facts. |
 | Confirm-before-write profile intake | docs/UPSTREAM-ADOPTION-PLAN.md § Adopt | Embedded fallback remains | Adopt | Private, explicitly confirmed revisions avoid silent PII changes. |
 | Live lifecycle/status reconciliation | functions/api/status.js, functions/_lib/status.js | Status mutations exist; snapshot is stale | Adopt | Current status must override discovery data. |
-| Broad provider scanner (~90 boards) | docs/UPSTREAM-ADOPTION-PLAN.md § Deferred | Narrow existing providers | Defer | Add only for measured user demand; avoid maintenance and scope sprawl. |
+| Broad provider scanner (~90 boards) | https://github.com/santifer/career-ops; docs/UPSTREAM-ADOPTION-PLAN.md § Deferred | Narrow existing providers | Defer | Add only for measured user demand; avoid maintenance and scope sprawl. |
 | OCR/DOCX/LaTeX intake | docs/UPSTREAM-ADOPTION-PLAN.md § Deferred | PDF/text scope | Defer | Native PDF/text path is sufficient for the first safe slice. |
 | Automatic submission/autofill | docs/UPSTREAM-ADOPTION-PLAN.md § Rejected | Not present | Reject | Irreversible browser actions violate human-in-the-loop safety. |
 | Plugins and third-party integrations | docs/UPSTREAM-ADOPTION-PLAN.md § Rejected | Not present | Reject | Avoid OAuth, supply-chain, and privacy scope without a requirement. |
