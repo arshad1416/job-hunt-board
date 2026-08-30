@@ -18,7 +18,9 @@ const ALLOWED_FILES = {
   'resume.md':       { type: 'text/markdown; charset=utf-8', disposition: 'attachment', download: 'resume.md' },
   'cover_letter.md': { type: 'text/markdown; charset=utf-8', disposition: 'attachment', download: 'cover_letter.md' },
   'job_details.json': { type: 'application/json; charset=utf-8', disposition: 'inline', download: 'job_details.json' },
-  'manifest.json': { type: 'application/json; charset=utf-8', disposition: 'inline', download: 'manifest.json' }
+  'manifest.json': { type: 'application/json; charset=utf-8', disposition: 'inline', download: 'manifest.json' },
+  'resume.pdf': { type: 'application/pdf', disposition: 'attachment', download: 'resume.pdf' },
+  'cover_letter.pdf': { type: 'application/pdf', disposition: 'attachment', download: 'cover_letter.pdf' }
 };
 
 export async function onRequestGet(context) {

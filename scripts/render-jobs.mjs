@@ -1,0 +1,10 @@
+#!/usr/bin/env node
+import { randomUUID } from 'node:crypto';
+import { tursoQuery, tursoExecute } from './lib/turso.mjs';
+import { acquireFetchLock } from './lib/lock.mjs';
+export const MAX_ATTEMPTS=3, LEASE_SECONDS=600;
+export function retryAfter(attempt, now=Date.now()){return now+Math.min(3600000,1000*2**Math.max(0,attempt-1));}
+export function claimable(job,now=Date.now()){return job&&job.attempt_count<MAX_ATTEMPTS&&((job.state==='pending'&&(!job.retry_at||Date.parse(job.retry_at)<=now))||(job.state==='failed'&&job.retry_at&&Date.parse(job.retry_at)<=now)||(job.state==='claimed'&&Date.parse(job.lease_expires_at)<=now));}
+export function claimSql(){return "UPDATE render_jobs SET state='claimed',lease_token=?,lease_expires_at=datetime('now','+' || ? || ' seconds'),attempt_count=attempt_count+1 WHERE id=? AND (state='pending' OR (state='failed' AND retry_at<=datetime('now')) OR (state='claimed' AND lease_expires_at<=datetime('now'))) AND attempt_count<?"}
+export async function pollRenderJobs({env,dryRun=false,limit=10,query=tursoQuery,execute=tursoExecute}={}){const rows=await query(env,"SELECT r.*,m.job_id,m.version,m.artifact_prefix FROM render_jobs r JOIN material_versions m ON m.id=r.material_version_id WHERE (r.state='pending' OR r.state='failed' OR (r.state='claimed' AND r.lease_expires_at<=datetime('now'))) AND r.attempt_count<? ORDER BY r.created_at LIMIT ?",[MAX_ATTEMPTS,Math.min(50,Math.max(1,limit))]);if(dryRun)return{dryRun:true,count:rows.length,rows:rows.map(r=>({id:r.id,state:r.state,attempt_count:r.attempt_count}))};let claimed=[];for(const row of rows){const token=randomUUID(),x=await execute(env,claimSql(),[token,LEASE_SECONDS,row.id,MAX_ATTEMPTS]);if(Number(x.affectedRowCount)===1)claimed.push({...row,lease_token:token});}return{dryRun:false,claimed};}
+if(import.meta.url===`file://${process.argv[1]}`){const dry=process.argv.includes('--dry-run');const lock=acquireFetchLock('render-jobs',{startedAtMs:Date.now()});if(!lock.ok){console.error('lock unavailable');process.exitCode=1}else try{console.log(JSON.stringify(await pollRenderJobs({env:process.env,dryRun:dry})));}finally{lock.release()}}

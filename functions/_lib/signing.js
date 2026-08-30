@@ -15,7 +15,7 @@ const TOKEN_VERSION = 'v1';
 const DEFAULT_TTL_SECONDS = 900; // 15 minutes
 
 /** Files the dashboard can be handed links for. */
-const MATERIAL_FILES = ['resume.md', 'cover_letter.md', 'job_details.json'];
+const MATERIAL_FILES = ['resume.md', 'cover_letter.md', 'job_details.json', 'resume.pdf', 'cover_letter.pdf'];
 const MATERIAL_ROUTE = '/api/materials';
 
 const encoder = new TextEncoder();
