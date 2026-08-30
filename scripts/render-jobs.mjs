@@ -46,14 +46,15 @@ export async function processRenderJob(row, { env, dryRun = false, execute = tur
     for (const [, name] of staged) { await leaseLive(); if (bucket.head && await bucket.head(prefix + '/' + name)) throw new Error('pdf_exists'); }
     const uploaded = [];
     try {
-      for (const [pdf, name] of staged) { await leaseLive(); await bucket.put(prefix + '/' + name, pdf.body, { onlyIfNew: true }); uploaded.push(prefix + '/' + name); }
+      for (const [pdf, name] of staged) { await leaseLive(); await bucket.put(prefix + '/' + name, pdf.body, { onlyIfNew: true }); uploaded.push(prefix + '/' + name); await leaseLive(); }
     } catch (error) {
       if (bucket.delete) for (const key of uploaded) { try { await bucket.delete(key); } catch {} }
       throw error;
     }
     const digest = async (body) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', body instanceof Uint8Array ? body : new TextEncoder().encode(String(body))))].map(b => b.toString(16).padStart(2, '0')).join('');
     const resumeHash = await digest(resumePdf.body), coverHash = await digest(coverPdf.body);
-    await execute(env, "UPDATE render_jobs SET resume_pdf_sha256=?, cover_letter_pdf_sha256=?, resume_pdf_bytes=?, cover_letter_pdf_bytes=? WHERE id=? AND state='claimed' AND lease_token=? AND attempt_count=?", [resumeHash, coverHash, resumePdf.body?.byteLength || 0, coverPdf.body?.byteLength || 0, id, token, attempt]);
+    const metadata = await execute(env, "UPDATE render_jobs SET resume_pdf_sha256=?, cover_letter_pdf_sha256=?, resume_pdf_bytes=?, cover_letter_pdf_bytes=? WHERE id=? AND state='claimed' AND lease_token=? AND attempt_count=?", [resumeHash, coverHash, resumePdf.body?.byteLength || 0, coverPdf.body?.byteLength || 0, id, token, attempt]);
+    if (Number(metadata?.affectedRowCount) !== 1) { if (bucket.delete) for (const key of uploaded) { try { await bucket.delete(key); } catch {} } return { id, state: 'stale' }; }
     return terminal(true);
   } catch (error) { if (error.message === 'lease_stale') return { id, state: 'stale' }; return terminal(false, error.message); }
 }
