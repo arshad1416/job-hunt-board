@@ -20,6 +20,10 @@ The Pi worker runs `node scripts/render-jobs.mjs --dry-run` (optionally `--limit
 
 Material links expose Markdown/details immediately; PDF links appear only after verified versioned source integrity, successful render state, and both exact PDF objects. Errors are private/no-store and PDFs are never served through legacy flat paths.
 
+## Task 4 delivery
+
+Run the Pi-only worker with `node scripts/render-jobs.mjs --dry-run --limit 10`; it polls Turso under the existing lock, recovers stale leases, and uses bounded exponential retries. PDFs require verified versioned sources and successful pair rendering; signed URLs are private/no-store and legacy Markdown remains supported. No production canary has been run.
+
 ## How It Works
 
 ```
