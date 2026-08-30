@@ -28,6 +28,10 @@ Run the Pi-only worker with `node scripts/render-jobs.mjs --dry-run --limit 10`;
 
 Run the Pi-only `node scripts/render-jobs.mjs --dry-run --limit 10` worker. It polls Turso under the existing lock, recovers stale leases, and applies bounded retries. Private PDFs require verified versioned sources and successful render readiness; signed URLs include the version. Legacy Markdown remains supported. No production canary has been run.
 
+## Task 4 delivery contract
+
+Migration 003 owns the single pair render job per material version. The Pi-only worker polls Turso under the existing lock with `--dry-run` and `--limit`; stale leases recover with bounded retries. PDFs require verified versioned source, successful pair state, and both exact objects. Signed links are private and version-bound; legacy Markdown remains supported. No production canary has been run.
+
 ## How It Works
 
 ```

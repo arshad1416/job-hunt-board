@@ -36,6 +36,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_material_versions_one_active
 CREATE TABLE IF NOT EXISTS render_jobs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   material_version_id INTEGER NOT NULL,
+  document TEXT NOT NULL DEFAULT 'pair' CHECK (document = 'pair'),
+  source_artifact_prefix TEXT,
   state TEXT NOT NULL DEFAULT 'pending'
     CHECK (state IN ('pending', 'claimed', 'succeeded', 'failed')),
   attempt_count INTEGER NOT NULL DEFAULT 0,
@@ -47,7 +49,7 @@ CREATE TABLE IF NOT EXISTS render_jobs (
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),
   completed_at TEXT,
   FOREIGN KEY (material_version_id) REFERENCES material_versions(id),
-  UNIQUE (material_version_id)
+  UNIQUE (material_version_id, document)
 );
 
 CREATE INDEX IF NOT EXISTS idx_render_jobs_claimable
