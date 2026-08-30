@@ -56,6 +56,7 @@ export async function processRenderJob(row, { env, dryRun = false, execute = tur
     const resumeHash = await digest(resumePdf.body), coverHash = await digest(coverPdf.body);
     const metadata = await execute(env, "UPDATE render_jobs SET resume_pdf_sha256=?, cover_letter_pdf_sha256=?, resume_pdf_bytes=?, cover_letter_pdf_bytes=? WHERE id=? AND state='claimed' AND lease_token=? AND attempt_count=?", [resumeHash, coverHash, resumePdf.body?.byteLength || 0, coverPdf.body?.byteLength || 0, id, token, attempt]);
     if (Number(metadata?.affectedRowCount) !== 1) { if (bucket.delete) for (const key of uploaded) { try { await bucket.delete(key); } catch {} } return { id, state: 'stale' }; }
+    try { await leaseLive(); } catch (error) { if (error.message === 'lease_stale') { if (bucket.delete) for (const key of uploaded) { try { await bucket.delete(key); } catch {} } return { id, state: 'stale' }; } throw error; }
     return terminal(true);
   } catch (error) { if (error.message === 'lease_stale') return { id, state: 'stale' }; return terminal(false, error.message); }
 }
