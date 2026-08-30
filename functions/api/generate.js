@@ -576,7 +576,7 @@ async function tryReuseMaterials(env, job, jobId) {
       leaseToken = null;
       return null;
     }
-    const srcPrefix = source.artifact_prefix;
+    const srcPrefix = materialKeys(best.id, source.version).resume.replace(/\/resume\.md$/, '');
     const [resumeObj, coverObj, detailsObj, manifestObj] = await Promise.all([
       env.JOB_MATERIALS_BUCKET.get(srcPrefix + '/resume.md'),
       env.JOB_MATERIALS_BUCKET.get(srcPrefix + '/cover_letter.md'),
