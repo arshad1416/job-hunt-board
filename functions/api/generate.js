@@ -571,13 +571,19 @@ async function tryReuseMaterials(env, job, jobId) {
 
     const source = await getCurrentMaterial(env, best.id);
     if (!source) return null;
-    const srcPrefix = source.artifact_prefix || ('materials/' + best.id + '/versions/' + source.version);
-    const [resumeObj, coverObj, detailsObj] = await Promise.all([
+    if (!source.version || !source.artifact_prefix?.includes('/versions/')) {
+      await markMaterialFailed(env, { jobId, version, leaseToken, errorCode: 'legacy_source', errorMessage: 'Reusable source is not versioned' });
+      leaseToken = null;
+      return null;
+    }
+    const srcPrefix = source.artifact_prefix;
+    const [resumeObj, coverObj, detailsObj, manifestObj] = await Promise.all([
       env.JOB_MATERIALS_BUCKET.get(srcPrefix + '/resume.md'),
       env.JOB_MATERIALS_BUCKET.get(srcPrefix + '/cover_letter.md'),
-      env.JOB_MATERIALS_BUCKET.get(srcPrefix + '/job_details.json').catch(() => null)
+      env.JOB_MATERIALS_BUCKET.get(srcPrefix + '/job_details.json').catch(() => null),
+      env.JOB_MATERIALS_BUCKET.get(srcPrefix + '/manifest.json').catch(() => null)
     ]);
-    if (!resumeObj || !coverObj || !detailsObj) {
+    if (!resumeObj || !coverObj || !detailsObj || !manifestObj) {
       if (leaseToken) await markMaterialFailed(env, { jobId, version, leaseToken, errorCode: 'source_incomplete', errorMessage: 'Reusable source set is incomplete' });
       leaseToken = null;
       return null;
@@ -586,6 +592,16 @@ async function tryReuseMaterials(env, job, jobId) {
     let details = null;
     if (detailsObj) {
       try { details = JSON.parse(await detailsObj.text()); } catch { details = null; }
+    }
+    let sourceManifest = null;
+    try { sourceManifest = JSON.parse(await manifestObj.text()); } catch {}
+    const sourceResume = await resumeObj.text();
+    const sourceCover = await coverObj.text();
+    const sourceDetails = await detailsObj.text();
+    if (!sourceManifest || !(await validateManifestBytes(sourceManifest, { resume: sourceResume, coverLetter: sourceCover, details: sourceDetails }, { jobId: best.id, version: source.version }))) {
+      await markMaterialFailed(env, { jobId, version, leaseToken, errorCode: 'manifest_invalid', errorMessage: 'Reusable manifest does not match source bytes' });
+      leaseToken = null;
+      return null;
     }
     // Legacy artifacts without a report cannot prove the hard gates.
     if (!details || !reusableQuality(details)) {
@@ -610,8 +626,8 @@ async function tryReuseMaterials(env, job, jobId) {
       return null;
     }
 
-    const resumeText = await resumeObj.text();
-    const coverText = await coverObj.text();
+    const resumeText = sourceResume;
+    const coverText = sourceCover;
     const reusedDetails = JSON.stringify({
       job_id: jobId,
       title: job.title,
