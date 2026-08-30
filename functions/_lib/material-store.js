@@ -42,12 +42,20 @@ async function claimMaterial(env, { jobId, version, leaseSeconds = LEASE_SECONDS
   return { claimed: Number(result.affectedRowCount) === 1, leaseToken };
 }
 
+async function enqueueRenderJob(env, { materialVersionId, artifactPrefix }) {
+  if (!materialVersionId || !artifactPrefix) return false;
+  const result = await tursoExecute(env, "INSERT INTO render_jobs (material_version_id, document, source_artifact_prefix) VALUES (?, 'pair', ?) ON CONFLICT(material_version_id, document) DO UPDATE SET source_artifact_prefix=excluded.source_artifact_prefix, state=CASE WHEN render_jobs.state='succeeded' THEN render_jobs.state ELSE 'pending' END, updated_at=datetime('now')", [materialVersionId, artifactPrefix]);
+  return Number(result?.affectedRowCount) === 1;
+}
+
 async function markMaterialSucceeded(env, { jobId, version, leaseToken, artifactPrefix, sourceExists = true, hardGatesPass = true }) {
   if (!sourceExists || !hardGatesPass || !leaseToken || !artifactPrefix) return false;
   const result = await tursoExecute(env,
     "UPDATE material_versions SET state='succeeded', source_exists=1, hard_gates_pass=1, artifact_prefix=?, lease_token=NULL, lease_expires_at=NULL, completed_at=datetime('now'), updated_at=datetime('now') WHERE job_id=? AND version=? AND state='claimed' AND lease_token=? AND lease_expires_at > datetime('now')",
     [artifactPrefix || null, jobId, version, leaseToken]);
-  return Number(result.affectedRowCount) === 1;
+  const ok = Number(result.affectedRowCount) === 1;
+  if (ok) await enqueueRenderJob(env, { materialVersionId: (await getMaterialVersion(env, jobId, version))?.id, artifactPrefix });
+  return ok;
 }
 
 async function markMaterialFailed(env, { jobId, version, leaseToken, errorCode = 'material_failed', errorMessage }) {
@@ -89,4 +97,4 @@ async function markCurrentIfAbsent(env, jobId, version) {
   return setCurrentMaterial(env, jobId, version);
 }
 
-export { LEASE_SECONDS, getMaterialPdfState, ensureMaterialVersion, getMaterialVersion, claimMaterial, markMaterialSucceeded, markMaterialFailed, getCurrentSuccessfulMaterial, projectMaterialsReady, setCurrentMaterial, getCurrentMaterial, resetFailedMaterial };
+export { LEASE_SECONDS, enqueueRenderJob, getMaterialPdfState, ensureMaterialVersion, getMaterialVersion, claimMaterial, markMaterialSucceeded, markMaterialFailed, getCurrentSuccessfulMaterial, projectMaterialsReady, setCurrentMaterial, getCurrentMaterial, resetFailedMaterial };
