@@ -71,6 +71,12 @@ export async function onRequestGet(context) {
   }
   const key = version ? material.artifact_prefix + '/' + filename : `materials/${jobId}/${filename}`;
   const object = await env.JOB_MATERIALS_BUCKET.get(key);
+  if (version && filename === 'manifest.json' && object) {
+    try {
+      const manifest = JSON.parse(await object.text());
+      if (String(manifest.job_id) !== String(jobId) || String(manifest.version).toLowerCase() !== version.toLowerCase()) return new Response(JSON.stringify({ error: 'Manifest identity mismatch' }), { status: 404 });
+    } catch { return new Response(JSON.stringify({ error: 'Invalid manifest' }), { status: 404 }); }
+  }
 
   if (!object) {
     return new Response(
