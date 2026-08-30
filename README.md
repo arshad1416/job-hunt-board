@@ -4,7 +4,7 @@ A single-page job hunt dashboard deployed on **Cloudflare Pages** that renders a
 
 - **Live URL:** `jobs.arshadkazi.ca` (Cloudflare Pages)
 - **Repo:** `github.com/arshad1416/job-hunt-board`
-- **Architecture:** [ARCHITECTURE_PLAN.md](./ARCHITECTURE_PLAN.md)
+- **Architecture:** [`wrangler.jsonc`](./wrangler.jsonc), Pages Functions under [`functions/`](./functions/), and the adoption contract in [`docs/UPSTREAM-ADOPTION-MATRIX.md`](./docs/UPSTREAM-ADOPTION-MATRIX.md)
 
 ---
 
@@ -96,7 +96,7 @@ If `DASHBOARD_AUTH_TOKEN` is unset on the server, every non-public route fails c
 
 - **Endpoint:** `https://morning-briefing-arshad1416.aws-us-east-1.turso.io/v2/pipeline`
 - **Auth:** `Authorization: Bearer <TURSO_TOKEN>`
-- **Table:** `applications` (schema in [ARCHITECTURE_PLAN.md](./ARCHITECTURE_PLAN.md) §5.1)
+- **Table:** `applications` (schema and additive migrations in `migrations/`)
 - The `applications` table uses `found_at` for posted date and now has an
   additive `description` column. Structured ingestion stores genuine bodies
   when the search source provides them; missing bodies are resolved and cached
@@ -138,7 +138,7 @@ If `DASHBOARD_AUTH_TOKEN` is unset on the server, every non-public route fails c
 
 ## Cloudflare Pages Setup (Step-by-Step)
 
-> Cloudflare Pages is **not yet provisioned**. Follow these exact steps.
+> Cloudflare Pages is configured through `wrangler.jsonc`; verify environment-specific bindings and secrets before deployment.
 
 ### 1. Create R2 Bucket
 
@@ -321,7 +321,7 @@ The API-first provider, three-way liveness strategy, URL fingerprints, and bound
 
 ## Scoring Algorithm
 
-Score = **title (40%) + skills (30%) + location (15%) + remote fit (15%)**, with capped bonuses for seniority (+10) and target OEMs (+8). See [ARCHITECTURE_PLAN.md](./ARCHITECTURE_PLAN.md) §6 for full pseudocode.
+Score = **title (40%) + skills (30%) + location (15%) + remote fit (15%)**, with capped bonuses for seniority (+10) and target OEMs (+8). The scoring implementation lives in the Pi ingestion pipeline.
 
 ---
 
