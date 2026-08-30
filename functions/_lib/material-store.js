@@ -92,19 +92,26 @@ async function setCurrentMaterial(env, jobId, version) {
 }
 
 async function getMaterialPdfState(env, jobId, material, bucket) {
+  const version = material?.version;
+  const prefix = material?.artifact_prefix;
+  const expected = new RegExp('^materials/' + String(jobId) + '/versions/' + String(version || '').toLowerCase() + '/attempt-[A-Za-z0-9_-]{1,80}$');
+  if (!version || !expected.test(prefix || '')) return { state: 'pending', ready: false };
   try {
-    const version=material?.version, prefix=material?.artifact_prefix;
-    const expected=new RegExp('^materials/'+String(jobId)+'/versions/'+String(version||'').toLowerCase()+'/attempt-[A-Za-z0-9_-]{1,80}$');
-    if (!version || !expected.test(prefix||'')) return {state:'pending',ready:false};
-    const rows=await tursoQuery(env, "SELECT r.state,r.error_code,r.attempt_count,r.resume_pdf_sha256,r.cover_letter_pdf_sha256,r.resume_pdf_bytes,r.cover_letter_pdf_bytes FROM render_jobs r WHERE r.material_version_id=? AND r.document='pair' AND r.source_artifact_prefix=?", [material.id,prefix]);
-    if(rows.length!==1) return {state:rows.some(r=>r.state==='failed')?'failed':'pending',ready:false};
-    const row=rows[0], meta={attempt_count:Number(row.attempt_count)||0,...(row.error_code?{error_code:String(row.error_code).slice(0,80)}:{})};
-    if(row.state==='failed') return {state:'failed',ready:false,...meta};
-    if(row.state!=='succeeded'||!bucket?.head) return {state:'pending',ready:false,...meta};
-    const [a,b]=await Promise.all([bucket.head(prefix+'/resume.pdf'),bucket.head(prefix+'/cover_letter.pdf')]);
-    if(!a||!b||!row.resume_pdf_sha256||!row.cover_letter_pdf_sha256||!Number(row.resume_pdf_bytes)||!Number(row.cover_letter_pdf_bytes)) return {state:'pending',ready:false,...meta};
-    return {state:'available',ready:true,...meta};
-  } catch { return {state:'pending',ready:false}; }
+    const rows = await tursoQuery(env, "SELECT r.state,r.error_code,r.attempt_count,r.resume_pdf_sha256,r.cover_letter_pdf_sha256,r.resume_pdf_bytes,r.cover_letter_pdf_bytes FROM render_jobs r WHERE r.material_version_id=? AND r.document='pair' AND r.source_artifact_prefix=?", [material.id, prefix]);
+    if (rows.length !== 1) return { state: rows.some(row => row.state === 'failed') ? 'failed' : 'pending', ready: false };
+    const row = rows[0];
+    const meta = { attempt_count: Number(row.attempt_count) || 0 };
+    if (row.error_code) meta.error_code = String(row.error_code).slice(0, 80);
+    if (row.state === 'failed') return { state: 'failed', ready: false, ...meta };
+    if (row.state !== 'succeeded' || !bucket?.head || !bucket?.get) return { state: 'pending', ready: false, ...meta };
+    const [resumeHead, coverHead] = await Promise.all([bucket.head(prefix + '/resume.pdf'), bucket.head(prefix + '/cover_letter.pdf')]);
+    if (!resumeHead || !coverHead || !row.resume_pdf_sha256 || !row.cover_letter_pdf_sha256 || !Number.isInteger(Number(row.resume_pdf_bytes)) || !Number.isInteger(Number(row.cover_letter_pdf_bytes))) return { state: 'pending', ready: false, ...meta };
+    const read = async key => { const object = await bucket.get(key); return object ? new Uint8Array(await object.arrayBuffer()) : null; };
+    const digest = async bytes => [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map(byte => byte.toString(16).padStart(2, '0')).join('');
+    const [resumeBytes, coverBytes] = await Promise.all([read(prefix + '/resume.pdf'), read(prefix + '/cover_letter.pdf')]);
+    if (!resumeBytes || !coverBytes || resumeBytes.byteLength !== Number(row.resume_pdf_bytes) || coverBytes.byteLength !== Number(row.cover_letter_pdf_bytes) || await digest(resumeBytes) !== row.resume_pdf_sha256 || await digest(coverBytes) !== row.cover_letter_pdf_sha256) return { state: 'pending', ready: false, ...meta };
+    return { state: 'available', ready: true, ...meta };
+  } catch { return { state: 'pending', ready: false }; }
 }
 
 async function getCurrentMaterial(env, jobId) {
