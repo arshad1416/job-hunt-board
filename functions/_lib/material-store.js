@@ -44,8 +44,9 @@ async function claimMaterial(env, { jobId, version, leaseSeconds = LEASE_SECONDS
 
 async function enqueueRenderJob(env, { materialVersionId, artifactPrefix }) {
   if (!materialVersionId || !artifactPrefix) return false;
-  const result = await tursoExecute(env, "INSERT INTO render_jobs (material_version_id, document, source_artifact_prefix) VALUES (?, 'pair', ?) ON CONFLICT(material_version_id, document) DO UPDATE SET source_artifact_prefix=excluded.source_artifact_prefix, state=CASE WHEN render_jobs.state='succeeded' THEN render_jobs.state ELSE 'pending' END, updated_at=datetime('now')", [materialVersionId, artifactPrefix]);
-  return Number(result?.affectedRowCount) === 1;
+  const result = await tursoExecute(env, "INSERT INTO render_jobs (material_version_id, document, source_artifact_prefix) VALUES (?, 'pair', ?) ON CONFLICT(material_version_id, document) DO UPDATE SET source_artifact_prefix=CASE WHEN render_jobs.state='pending' THEN excluded.source_artifact_prefix ELSE render_jobs.source_artifact_prefix END, state=CASE WHEN render_jobs.state='succeeded' THEN render_jobs.state ELSE 'pending' END, updated_at=datetime('now')", [materialVersionId, artifactPrefix]);
+  if (Number(result?.affectedRowCount) !== 1) throw new Error('render_enqueue_failed');
+  return true;
 }
 
 async function markMaterialSucceeded(env, { jobId, version, leaseToken, artifactPrefix, sourceExists = true, hardGatesPass = true }) {

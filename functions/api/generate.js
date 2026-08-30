@@ -1014,7 +1014,6 @@ export async function onRequestPost(context) {
     hardGatesPass: hardGatesPass(quality)
   });
   if (!recorded) return json({ error: 'Material generation lease expired' }, 409);
-  await enqueueRenderJob(env, { materialVersionId: (await getMaterialVersion(env, jobId, materialVersion))?.id, artifactPrefix: stagedKeys.resume.replace('/resume.md', '') });
   const currentSet = await setCurrentMaterial(env, jobId, materialVersion);
   if (!currentSet) {
     const current = await getCurrentMaterial(env, jobId);
