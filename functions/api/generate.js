@@ -15,6 +15,21 @@
 
 import { tursoQuery, tursoExecute } from '../_lib/turso.js';
 import { signedMaterialUrls } from '../_lib/signing.js';
+import {
+  ensureMaterialVersion,
+  claimMaterial,
+  markMaterialSucceeded,
+  markMaterialFailed,
+  getCurrentSuccessfulMaterial,
+  projectMaterialsReady
+} from '../_lib/material-store.js';
+import {
+  hardGatesPass,
+  isCompleteSourceSet,
+  legacyMaterialKeys,
+  materialKeys,
+  versionFor
+} from '../_lib/material-state.js';
 import { extractJobDescription } from '../_lib/extract-jd.mjs';
 import { fetchPublicAtsJob } from '../_lib/public-ats.mjs';
 import { isSafePublicHttpUrl } from '../_lib/job-url.mjs';
@@ -226,8 +241,8 @@ async function fetchJobDescription(url) {
 /**
  * Load the candidate's master profile + same-track reference resume from
  * the private R2 bucket (uploaded once via wrangler; refresh the objects
- * as the master resume evolves). Returns null when R2 is unavailable —
- * prompts then fall back to the embedded CANDIDATE_PROFILE summary.
+ * as the master resume evolves). Returns null when R2 is unavailable.
+ * The caller fails closed rather than using a tracked personal fallback.
  * @returns {Promise<{profileYaml: string, referenceResume: string}|null>}
  */
 async function loadCandidateMaterials(env, track) {
@@ -400,12 +415,16 @@ async function appendStatusEvent(env, jobId, status, note) {
 }
 
 /** Advance only pre-pipeline rows and record the transition when the update lands. */
-async function markMaterialsReady(env, jobId, note) {
+async function markMaterialsReady(env, jobId, note, version = null) {
   try {
-    const result = await tursoExecute(env, "UPDATE applications SET status='materials_ready', updated_at=datetime('now') WHERE id=? AND status IN ('found','saved','not_applied','new')", [jobId]);
-    if (result.affectedRowCount > 0) await appendStatusEvent(env, jobId, 'materials_ready', note);
+    const result = version
+      ? await projectMaterialsReady(env, jobId, version)
+      : false;
+    if (result) await appendStatusEvent(env, jobId, 'materials_ready', note);
+    return result;
   } catch (err) {
     console.error('Turso materials-ready update failed (non-fatal):', err);
+    return false;
   }
 }
 
@@ -539,18 +558,9 @@ async function runRepair(env, job, materials, resumeMd, coverMd, report, sources
  */
 async function tryReuseMaterials(env, job, jobId) {
   if (!env.JOB_MATERIALS_BUCKET) return null;
-  // Claim the target row before the scan. A request that loses the claim
-  // falls through to the existing-materials path and never writes R2.
-  // The claim is a reservation only; normal generation may follow a miss.
+  let version = null;
+  let leaseToken = null;
   try {
-    const claim = await tursoExecute(env,
-      "UPDATE applications SET status='materials_ready', updated_at=datetime('now') WHERE id=? AND status IN ('found','saved','not_applied','new')",
-      [jobId]);
-    if (claim.affectedRowCount === 0) return null;
-    // A claimed row is not reused by another active request. It remains a
-    // visible materials_ready reservation if the optional reuse misses.
-    // A concurrent caller that loses the claim cannot enter this writer.
-    // R2 writes below are still guarded by the second head check.
     const rows = await tursoQuery(
       env,
       "SELECT id, title, company, description FROM applications " +
@@ -566,28 +576,56 @@ async function tryReuseMaterials(env, job, jobId) {
     );
     if (!best) return null;
 
+    const reuseJd = jobDescriptionText(job) || '';
+    version = await versionFor({
+      normalizedJd: reuseJd,
+      profileRevision: 'reuse-' + best.id,
+      templateRevision: 'source-v1',
+      rendererRevision: 'source-v1'
+    });
+    await ensureMaterialVersion(env, { jobId, version, reusedFromJobId: best.id });
+    const claim = await claimMaterial(env, { jobId, version });
+    if (!claim.claimed) return null;
+    leaseToken = claim.leaseToken;
+
     const srcPrefix = 'materials/' + best.id;
     const [resumeObj, coverObj, detailsObj] = await Promise.all([
       env.JOB_MATERIALS_BUCKET.get(srcPrefix + '/resume.md'),
       env.JOB_MATERIALS_BUCKET.get(srcPrefix + '/cover_letter.md'),
       env.JOB_MATERIALS_BUCKET.get(srcPrefix + '/job_details.json').catch(() => null)
     ]);
-    if (!resumeObj || !coverObj) return null;
+    if (!resumeObj || !coverObj || !detailsObj) {
+      if (leaseToken) await markMaterialFailed(env, { jobId, version, leaseToken, errorCode: 'source_incomplete', errorMessage: 'Reusable source set is incomplete' });
+      leaseToken = null;
+      return null;
+    }
 
     let details = null;
     if (detailsObj) {
       try { details = JSON.parse(await detailsObj.text()); } catch { details = null; }
     }
-    // A missing legacy quality block is fine; an explicitly failed one is not.
-    if (!reusableQuality(details)) return null;
+    // Legacy artifacts without a report cannot prove the hard gates.
+    if (!details || !reusableQuality(details)) {
+      await markMaterialFailed(env, { jobId, version, leaseToken, errorCode: 'quality_unproven', errorMessage: 'Reusable quality gates are missing or failed' });
+      leaseToken = null;
+      return null;
+    }
 
     // When both records declare a track, do not reuse across tracks.
-    if (details?.track && job.track && details.track !== job.track) return null;
+    if (details?.track && job.track && details.track !== job.track) {
+      await markMaterialFailed(env, { jobId, version, leaseToken, errorCode: 'track_mismatch', errorMessage: 'Reusable material track does not match job track' });
+      leaseToken = null;
+      return null;
+    }
 
     // The idempotent head check earlier already passed, but re-verify here:
     // reuse must NEVER overwrite existing current materials.
     const existing = await env.JOB_MATERIALS_BUCKET.head('materials/' + jobId + '/resume.md');
-    if (existing) return null;
+    if (existing) {
+      await markMaterialFailed(env, { jobId, version, leaseToken, errorCode: 'legacy_exists', errorMessage: 'Legacy material objects already exist' });
+      leaseToken = null;
+      return null;
+    }
 
     const resumeText = await resumeObj.text();
     const coverText = await coverObj.text();
@@ -615,20 +653,34 @@ async function tryReuseMaterials(env, job, jobId) {
       generated_at: new Date().toISOString()
     }, null, 2);
 
+    const destination = materialKeys(jobId, version);
     await Promise.all([
-      env.JOB_MATERIALS_BUCKET.put('materials/' + jobId + '/resume.md', resumeText, {
+      env.JOB_MATERIALS_BUCKET.put(destination.resume, resumeText, {
         httpMetadata: { contentType: 'text/markdown; charset=utf-8' }
       }),
-      env.JOB_MATERIALS_BUCKET.put('materials/' + jobId + '/cover_letter.md', coverText, {
+      env.JOB_MATERIALS_BUCKET.put(destination.coverLetter, coverText, {
         httpMetadata: { contentType: 'text/markdown; charset=utf-8' }
       }),
-      env.JOB_MATERIALS_BUCKET.put('materials/' + jobId + '/job_details.json', reusedDetails, {
+      env.JOB_MATERIALS_BUCKET.put(destination.details, reusedDetails, {
         httpMetadata: { contentType: 'application/json' }
       })
     ]);
 
-    // Same C3 rule as normal generation: never downgrade a pipeline status.
-    await markMaterialsReady(env, jobId, 'materials reused');
+    const complete = { resume: true, coverLetter: true, details: true };
+    const recorded = await markMaterialSucceeded(env, {
+      jobId,
+      version,
+      leaseToken,
+      artifactPrefix: 'materials/' + jobId,
+      sourceExists: isCompleteSourceSet(complete),
+      hardGatesPass: hardGatesPass(details.quality)
+    });
+    if (!recorded) {
+      leaseToken = null;
+      return null;
+    }
+    leaseToken = null;
+    await markMaterialsReady(env, jobId, 'materials reused', version);
 
     return { reused_from_job_id: best.id };
   } catch (err) {
@@ -673,36 +725,66 @@ export async function onRequestPost(context) {
     return json({ error: 'Job not found: ' + jobId }, 404);
   }
 
-  // ── 3. Check if materials already exist (idempotent shortcut) ──
+  // ── 3. Check if the complete legacy source set already exists ──
+  // A lone resume is a partial upload, not a ready artifact.
+  // Versioned artifacts are the canonical path; legacy objects are read-only.
   if (env.JOB_MATERIALS_BUCKET) {
-    let existing = null;
+    let existingSources;
     try {
-      existing = await env.JOB_MATERIALS_BUCKET.head(`materials/${jobId}/resume.md`);
+      const legacy = legacyMaterialKeys(jobId);
+      const [resume, coverLetter, details] = await Promise.all([
+        env.JOB_MATERIALS_BUCKET.head(legacy.resume),
+        env.JOB_MATERIALS_BUCKET.head(legacy.coverLetter),
+        env.JOB_MATERIALS_BUCKET.head(legacy.details)
+      ]);
+      existingSources = { resume, coverLetter, details };
     } catch {
-      // R2 check failed — proceed to generate
+      existingSources = null;
     }
-    if (existing) {
-      // Materials already generated — never regenerate or overwrite them.
-      // Status bookkeeping is best-effort and cannot reopen this branch.
-      await markMaterialsReady(env, jobId, 'materials already existed');
+    if (isCompleteSourceSet(existingSources)) {
+      // Existing legacy sets remain readable, but readiness still requires a
+      // successful lifecycle record; Task 4 will make versioned delivery the
+      // canonical path.
       let cachedQuality = null;
       try {
-        const details = await env.JOB_MATERIALS_BUCKET.get(`materials/${jobId}/job_details.json`);
+        const details = await env.JOB_MATERIALS_BUCKET.get(existingSources.details.key || legacyMaterialKeys(jobId).details);
         cachedQuality = details ? JSON.parse(await details.text()).quality || null : null;
       } catch {}
-      return json({
-        success: true,
-        job_id: jobId,
-        cached: true,
-        materials: await signedMaterialUrls(env, jobId),
-        quality: cachedQuality ? {
-          ats_score: cachedQuality.ats?.score ?? null,
-          ats_pass: cachedQuality.atsPass === true,
-          facts_ok: cachedQuality.facts?.ok === true,
-          keyword_coverage: cachedQuality.keywordCoverage || null,
-          report: cachedQuality
-        } : null
-      });
+      if (cachedQuality && hardGatesPass(cachedQuality)) {
+        const cachedVersion = await versionFor({
+          normalizedJd: jobDescriptionText(job) || '',
+          profileRevision: 'legacy',
+          templateRevision: 'legacy',
+          rendererRevision: 'legacy'
+        });
+        await ensureMaterialVersion(env, { jobId, version: cachedVersion });
+        const cachedClaim = await claimMaterial(env, { jobId, version: cachedVersion });
+        if (cachedClaim.claimed) {
+          const recorded = await markMaterialSucceeded(env, {
+            jobId,
+            version: cachedVersion,
+            leaseToken: cachedClaim.leaseToken,
+            artifactPrefix: 'materials/' + jobId,
+            sourceExists: true,
+            hardGatesPass: true
+          });
+          if (!recorded) return json({ error: 'Cached materials state could not be recorded' }, 503);
+        }
+        await markMaterialsReady(env, jobId, 'complete materials already existed', cachedVersion);
+        return json({
+          success: true,
+          job_id: jobId,
+          cached: true,
+          materials: await signedMaterialUrls(env, jobId),
+          quality: {
+            ats_score: cachedQuality.ats?.score ?? null,
+            ats_pass: cachedQuality.atsPass === true,
+            facts_ok: cachedQuality.facts?.ok === true,
+            keyword_coverage: cachedQuality.keywordCoverage || null,
+            report: cachedQuality
+          }
+        });
+      }
     }
   }
 
@@ -738,9 +820,8 @@ export async function onRequestPost(context) {
 
   // ── 3c. Near-duplicate reuse — before any paid LLM call ──
   // A fresh JD body (3b) makes the similarity scan meaningful, so this
-  // runs after it. A hit short-circuits generation entirely.
-  // The helper atomically reserves pre-pipeline rows as materials_ready;
-  // this prevents concurrent requests from racing the R2 head/put sequence.
+  // runs after it. A hit short-circuits generation entirely. A miss never
+  // mutates the application status.
   const reused = await tryReuseMaterials(env, job, jobId);
   if (reused) {
     return json({
@@ -753,15 +834,39 @@ export async function onRequestPost(context) {
     });
   }
 
-  // ── 4. Call Claude Opus 5 for resume + cover letter ──
+  // ── 4. Claim lifecycle row, then call Claude Opus 5 ──
   if (!env.NINEROUTER_API_KEY) {
     return json({ error: 'Server LLM not configured' }, 503);
   }
   let resumeMd, coverMd;
   let materials = null;
   let quality, reviewerMeta, repairMeta;
+  let materialVersion = null;
+  let materialLeaseToken = null;
+  try {
+    materialVersion = await versionFor({
+      normalizedJd: jobDescriptionText(job) || '',
+      profileRevision: 'profile-v1',
+      templateRevision: 'source-v1',
+      rendererRevision: 'source-v1'
+    });
+    await ensureMaterialVersion(env, { jobId, version: materialVersion });
+    const claim = await claimMaterial(env, { jobId, version: materialVersion });
+    if (!claim.claimed) {
+      return json({ error: 'Material generation is already in progress' }, 409);
+    }
+    materialLeaseToken = claim.leaseToken;
+  } catch (err) {
+    console.error('Material lifecycle claim failed:', err);
+    return json({ error: 'Material generation is not configured' }, 503);
+  }
   try {
     materials = await loadCandidateMaterials(env, job.track);
+    if (!materials?.profileYaml) {
+      await markMaterialFailed(env, { jobId: jobId, version: materialVersion, leaseToken: materialLeaseToken, errorCode: 'profile_unconfigured', errorMessage: 'Private candidate profile is not configured' });
+      materialLeaseToken = null;
+      return json({ error: 'Candidate profile is not configured' }, 503);
+    }
     [resumeMd, coverMd] = await Promise.all([
       callLLM(env.NINEROUTER_API_KEY, resumePrompt(job, materials)),
       callLLM(env.NINEROUTER_API_KEY, coverLetterPrompt(job, materials))
@@ -821,12 +926,24 @@ export async function onRequestPost(context) {
     }
   } catch (err) {
     console.error('LLM generation error:', err);
+    await markMaterialFailed(env, { jobId: jobId, version: materialVersion, leaseToken: materialLeaseToken, errorCode: 'generation_failed', errorMessage: err.message });
     return json({ error: 'AI generation failed' }, 502);
   }
 
-  // ── 5. Store in R2 ──
-  if (env.JOB_MATERIALS_BUCKET) {
-    const key = `materials/${jobId}`;
+  // Hard gates are adoption gates, not metadata. Never persist or project a
+  // failed generation.
+  if (!hardGatesPass(quality)) {
+    await markMaterialFailed(env, { jobId: jobId, version: materialVersion, leaseToken: materialLeaseToken, errorCode: 'quality_failed', errorMessage: 'Generated materials failed deterministic quality gates' });
+    return json({ error: 'Generated materials failed quality gates' }, 422);
+  }
+
+  // ── 5. Store in immutable versioned R2 keys ──
+  if (!env.JOB_MATERIALS_BUCKET) {
+    await markMaterialFailed(env, { jobId: jobId, version: materialVersion, leaseToken: materialLeaseToken, errorCode: 'storage_unconfigured', errorMessage: 'Materials bucket is not configured' });
+    return json({ error: 'Materials storage is not configured' }, 503);
+  }
+  {
+    const key = materialKeys(jobId, materialVersion);
     const jd = jobDescriptionText(job);
     const jobDetails = JSON.stringify({
       job_id: jobId,
@@ -863,26 +980,43 @@ export async function onRequestPost(context) {
 
     try {
       await Promise.all([
-        env.JOB_MATERIALS_BUCKET.put(`${key}/resume.md`, resumeMd, {
+        env.JOB_MATERIALS_BUCKET.put(key.resume, resumeMd, {
           httpMetadata: { contentType: 'text/markdown; charset=utf-8' }
         }),
-        env.JOB_MATERIALS_BUCKET.put(`${key}/cover_letter.md`, coverMd, {
+        env.JOB_MATERIALS_BUCKET.put(key.coverLetter, coverMd, {
           httpMetadata: { contentType: 'text/markdown; charset=utf-8' }
         }),
-        env.JOB_MATERIALS_BUCKET.put(`${key}/job_details.json`, jobDetails, {
+        env.JOB_MATERIALS_BUCKET.put(key.details, jobDetails, {
           httpMetadata: { contentType: 'application/json' }
         })
       ]);
     } catch (err) {
       console.error('R2 store error:', err);
+      await markMaterialFailed(env, { jobId: jobId, version: materialVersion, leaseToken: materialLeaseToken, errorCode: 'storage_failed', errorMessage: err.message });
       return json({ error: 'Storage error: could not save materials' }, 500);
     }
   }
 
-  // ── 6. Update Turso status ──
-  // Only advance a pre-pipeline row; never downgrade an application that has
-  // already reached applied/screening/interview/offer/etc. (C3).
-  await markMaterialsReady(env, jobId, 'materials generated');
+  const complete = await Promise.all([
+    env.JOB_MATERIALS_BUCKET.head(materialKeys(jobId, materialVersion).resume),
+    env.JOB_MATERIALS_BUCKET.head(materialKeys(jobId, materialVersion).coverLetter),
+    env.JOB_MATERIALS_BUCKET.head(materialKeys(jobId, materialVersion).details)
+  ]);
+  const sourceSetExists = isCompleteSourceSet({ resume: complete[0], coverLetter: complete[1], details: complete[2] });
+  if (!sourceSetExists) {
+    await markMaterialFailed(env, { jobId, version: materialVersion, leaseToken: materialLeaseToken, errorCode: 'source_incomplete', errorMessage: 'Versioned source objects are incomplete after write' });
+    return json({ error: 'Stored materials are incomplete' }, 500);
+  }
+  const recorded = await markMaterialSucceeded(env, {
+    jobId,
+    version: materialVersion,
+    leaseToken: materialLeaseToken,
+    artifactPrefix: 'materials/' + jobId + '/versions/' + materialVersion,
+    sourceExists: sourceSetExists,
+    hardGatesPass: hardGatesPass(quality)
+  });
+  if (!recorded) return json({ error: 'Material generation lease expired' }, 409);
+  await markMaterialsReady(env, jobId, 'materials generated', materialVersion);
 
   // ── 7. Return success (short-lived signed links) ──
   return json({
