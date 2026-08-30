@@ -97,13 +97,13 @@ async function verifyMaterialsToken(env, jobId, filename, token, materialVersion
  * Build the full set of signed material URLs for one job.
  * @returns {Promise<{resume: string, cover_letter: string, job_details: string}>}
  */
-async function signedMaterialUrls(env, jobId, ttlSeconds = DEFAULT_TTL_SECONDS, materialVersion = null) {
+async function signedMaterialUrls(env, jobId, ttlSeconds = DEFAULT_TTL_SECONDS, materialVersion = null, includePdf = false) {
   const prefix = materialVersion ? `/api/materials/${jobId}/versions/${materialVersion}` : `/api/materials/${jobId}`;
-  const [resume, cover, details, resumePdf, coverPdf] = await Promise.all(MATERIAL_FILES.map(f => signMaterialsToken(env, jobId, f, ttlSeconds, materialVersion)));
+  const [resume, cover, details, resumePdf, coverPdf] = await Promise.all((includePdf ? MATERIAL_FILES : MATERIAL_FILES.slice(0, 3)).map(f => signMaterialsToken(env, jobId, f, ttlSeconds, materialVersion)));
   return {
     resume: `${prefix}/resume.md?token=${resume}`,
     cover_letter: `${prefix}/cover_letter.md?token=${cover}`,
-    job_details: `${prefix}/job_details.json?token=${details}`, resume_pdf: `${prefix}/resume.pdf?token=${resumePdf}`, cover_letter_pdf: `${prefix}/cover_letter.pdf?token=${coverPdf}`
+    job_details: `${prefix}/job_details.json?token=${details}`, ...(includePdf ? { resume_pdf: `${prefix}/resume.pdf?token=${resumePdf}`, cover_letter_pdf: `${prefix}/cover_letter.pdf?token=${coverPdf}` } : {})
   };
 }
 
