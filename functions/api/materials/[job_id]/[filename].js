@@ -1,4 +1,5 @@
 import { getCurrentMaterial, getMaterialVersion } from '../../../_lib/material-store.js';
+import { validateManifestBytes } from '../../../_lib/material-state.js';
 
 /* ═══════════════════════════════════════════════════════════════
    GET /api/materials/:job_id/:filename
@@ -71,11 +72,18 @@ export async function onRequestGet(context) {
   }
   const key = version ? material.artifact_prefix + '/' + filename : `materials/${jobId}/${filename}`;
   const object = await env.JOB_MATERIALS_BUCKET.get(key);
-  if (version && filename === 'manifest.json' && object) {
+  if (version && object) {
     try {
-      const manifest = JSON.parse(await object.text());
-      if (String(manifest.job_id) !== String(jobId) || String(manifest.version).toLowerCase() !== version.toLowerCase()) return new Response(JSON.stringify({ error: 'Manifest identity mismatch' }), { status: 404 });
-    } catch { return new Response(JSON.stringify({ error: 'Invalid manifest' }), { status: 404 }); }
+      const read = async (item) => item.arrayBuffer ? item.arrayBuffer() : new TextEncoder().encode(await item.text()).buffer;
+      const prefix = material.artifact_prefix;
+      const [manifestSource, resumeSource, coverSource, detailsSource] = await Promise.all([
+        env.JOB_MATERIALS_BUCKET.get(prefix + '/manifest.json'), env.JOB_MATERIALS_BUCKET.get(prefix + '/resume.md'), env.JOB_MATERIALS_BUCKET.get(prefix + '/cover_letter.md'), env.JOB_MATERIALS_BUCKET.get(prefix + '/job_details.json')
+      ]);
+      if (!manifestSource || !resumeSource || !coverSource || !detailsSource) throw new Error('incomplete source set');
+      const manifest = JSON.parse(new TextDecoder().decode(await read(manifestSource)));
+      const valid = await validateManifestBytes(manifest, { resume: await read(resumeSource), coverLetter: await read(coverSource), details: await read(detailsSource) }, { jobId, version });
+      if (!valid) throw new Error('source integrity mismatch');
+    } catch { return new Response(JSON.stringify({ error: 'Material integrity verification failed' }), { status: 404 }); }
   }
 
   if (!object) {
