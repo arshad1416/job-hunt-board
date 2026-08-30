@@ -35,7 +35,7 @@ export async function onRequestGet(context) {
       JSON.stringify({ error: 'Forbidden: file type not allowed' }),
       {
         status: 403,
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'X-Robots-Tag': 'noindex, nofollow' }
       }
     );
   }
@@ -46,7 +46,7 @@ export async function onRequestGet(context) {
       JSON.stringify({ error: 'Invalid job_id' }),
       {
         status: 400,
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'X-Robots-Tag': 'noindex, nofollow' }
       }
     );
   }
@@ -57,14 +57,14 @@ export async function onRequestGet(context) {
       JSON.stringify({ error: 'R2 bucket not configured' }),
       {
         status: 503,
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'X-Robots-Tag': 'noindex, nofollow' }
       }
     );
   }
 
   // ── Fetch from R2 ──
   const version = params.version;
-  if (version && !/^[a-f0-9]{64}$/i.test(version)) return new Response(JSON.stringify({ error: 'Invalid material version' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+  if (version && !/^[a-f0-9]{64}$/i.test(version)) return new Response(JSON.stringify({ error: 'Invalid material version' }), { status: 400, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'X-Robots-Tag': 'noindex, nofollow' } });
   let material = null;
   if (version) {
     const normalizedVersion = version.toLowerCase();
@@ -76,7 +76,7 @@ export async function onRequestGet(context) {
   if (!version && filename.endsWith('.pdf')) return routeError('PDF requires a verified material version', 404);
   const key = version ? material.artifact_prefix + '/' + filename : `materials/${jobId}/${filename}`;
   let object;
-  try { object = await env.JOB_MATERIALS_BUCKET.get(key); } catch { return new Response(JSON.stringify({ error: 'Material storage unavailable' }), { status: 404 }); }
+  try { object = await env.JOB_MATERIALS_BUCKET.get(key); } catch { return routeError('Material storage unavailable', 503); }
   if (version && object) {
     try {
       const read = async (item) => item.arrayBuffer ? item.arrayBuffer() : new TextEncoder().encode(await item.text()).buffer;
@@ -88,7 +88,7 @@ export async function onRequestGet(context) {
       const manifest = JSON.parse(new TextDecoder().decode(await read(manifestSource)));
       const valid = await validateManifestBytes(manifest, { resume: await read(resumeSource), coverLetter: await read(coverSource), details: await read(detailsSource) }, { jobId, version });
       if (!valid) throw new Error('source integrity mismatch');
-    } catch { return new Response(JSON.stringify({ error: 'Material integrity verification failed' }), { status: 404 }); }
+    } catch { return routeError('Material integrity verification failed', 404); }
   }
 
   if (!object) {
@@ -96,7 +96,7 @@ export async function onRequestGet(context) {
       JSON.stringify({ error: 'Not found: materials have not been generated for this job yet' }),
       {
         status: 404,
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'X-Robots-Tag': 'noindex, nofollow' }
       }
     );
   }
