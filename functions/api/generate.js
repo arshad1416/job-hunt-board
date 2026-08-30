@@ -19,6 +19,7 @@ import {
   ensureMaterialVersion,
   claimMaterial,
   markMaterialSucceeded,
+  enqueueRenderJob,
   markMaterialFailed,
   projectMaterialsReady,
   setCurrentMaterial,
