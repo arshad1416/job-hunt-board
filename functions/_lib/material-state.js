@@ -51,6 +51,23 @@ function isCompleteSourceSet(objects) {
   return Boolean(objects?.resume && objects?.coverLetter && objects?.details && objects?.manifest);
 }
 
+function validManifest(manifest, { jobId, version, hashes = null } = {}) {
+  if (!manifest || typeof manifest !== 'object') return false;
+  if (String(manifest.job_id) !== String(jobId) || String(manifest.version).toLowerCase() !== String(version).toLowerCase()) return false;
+  if (!manifest.profile_revision || !manifest.template_revision || !manifest.renderer_revision) return false;
+  const artifacts = manifest.artifacts;
+  if (!artifacts || typeof artifacts !== 'object') return false;
+  if (!/^[a-f0-9]{64}$/i.test(String(artifacts.resume || '')) ||
+      !/^[a-f0-9]{64}$/i.test(String(artifacts.cover_letter || '')) ||
+      !/^[a-f0-9]{64}$/i.test(String(artifacts.job_details || ''))) return false;
+  return !hashes || (hashes.resume === artifacts.resume && hashes.cover_letter === artifacts.cover_letter && hashes.job_details === artifacts.job_details);
+}
+
+function currentKey(jobId) {
+  if (!/^\d+$/.test(String(jobId))) throw new Error('Invalid job id');
+  return 'materials/' + String(jobId) + '/current.json';
+}
+
 function normalizeForVersion(value) {
   return String(value || '')
     .replace(/\r\n?/g, '\n')
@@ -110,5 +127,7 @@ export {
   sha256Hex,
   versionFor,
   materialKeys,
-  legacyMaterialKeys
+  legacyMaterialKeys,
+  validManifest,
+  currentKey
 };

@@ -12,14 +12,11 @@ function boundedError(value) {
   return String(value || 'material operation failed').replace(/[\r\n]+/g, ' ').slice(0, MAX_ERROR_LENGTH);
 }
 
-async function ensureMaterialVersion(env, { jobId, version, reusedFromJobId = null }) {
-  try {
-    await tursoExecute(env,
-      'INSERT INTO material_versions (job_id, version, reused_from_job_id) VALUES (?, ?, ?) ON CONFLICT(job_id, version) DO NOTHING',
-      [jobId, version, reusedFromJobId]);
-  } catch (error) {
-    if (!/unique|constraint/i.test(String(error?.message || ''))) throw error;
-  }
+async function ensureMaterialVersion(env, { jobId, version, reusedFromJobId = null, profileRevision = null, templateRevision = null, rendererRevision = null }) {
+  await tursoExecute(env,
+    'INSERT INTO material_versions (job_id, version, reused_from_job_id, profile_revision, template_revision, renderer_revision) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(job_id, version) DO NOTHING',
+    [jobId, version, reusedFromJobId, profileRevision, templateRevision, rendererRevision]
+  );
   return getMaterialVersion(env, jobId, version);
 }
 
@@ -42,7 +39,7 @@ async function markMaterialSucceeded(env, { jobId, version, leaseToken, artifact
   const result = await tursoExecute(env,
     "UPDATE material_versions SET state='succeeded', source_exists=1, hard_gates_pass=1, artifact_prefix=?, lease_token=NULL, lease_expires_at=NULL, completed_at=datetime('now'), updated_at=datetime('now') WHERE job_id=? AND version=? AND state='claimed' AND lease_token=? AND lease_expires_at > datetime('now')",
     [artifactPrefix || null, jobId, version, leaseToken]);
-  return result.affectedRowCount === 1;
+  return Number(result.affectedRowCount) === 1;
 }
 
 async function markMaterialFailed(env, { jobId, version, leaseToken, errorCode = 'material_failed', errorMessage }) {
@@ -50,7 +47,7 @@ async function markMaterialFailed(env, { jobId, version, leaseToken, errorCode =
   const result = await tursoExecute(env,
     "UPDATE material_versions SET state='failed', source_exists=0, hard_gates_pass=0, error_code=?, error_message=?, lease_token=NULL, lease_expires_at=NULL, updated_at=datetime('now') WHERE job_id=? AND version=? AND state='claimed' AND lease_token=?",
     [String(errorCode).slice(0, 80), boundedError(errorMessage || errorCode), jobId, version, leaseToken]);
-  return result.affectedRowCount === 1;
+  return Number(result.affectedRowCount) === 1;
 }
 
 async function getCurrentSuccessfulMaterial(env, jobId) {
@@ -64,7 +61,24 @@ async function projectMaterialsReady(env, jobId, version) {
   const result = await tursoExecute(env,
     "UPDATE applications SET status='materials_ready', updated_at=datetime('now') WHERE id=? AND status IN ('found','saved','not_applied','new') AND EXISTS (SELECT 1 FROM material_versions WHERE job_id=applications.id AND version=? AND state='succeeded' AND source_exists=1 AND hard_gates_pass=1)",
     [jobId, version]);
-  return result.affectedRowCount === 1;
+  return Number(result.affectedRowCount) === 1;
 }
 
-export { LEASE_SECONDS, ensureMaterialVersion, getMaterialVersion, claimMaterial, markMaterialSucceeded, markMaterialFailed, getCurrentSuccessfulMaterial, projectMaterialsReady };
+async function setCurrentMaterial(env, jobId, version) {
+  const rows = await tursoQuery(env, 'SELECT id FROM material_versions WHERE job_id=? AND version=? AND state=\'succeeded\' AND source_exists=1 AND hard_gates_pass=1', [jobId, version]);
+  if (!rows[0]) return false;
+  try { await tursoExecute(env, 'INSERT INTO material_current (job_id, material_version_id, version) VALUES (?, ?, ?) ON CONFLICT(job_id) DO NOTHING', [jobId, rows[0].id, version]); } catch { return false; }
+  const current = await getCurrentMaterial(env, jobId);
+  return current?.version === version;
+}
+
+async function getCurrentMaterial(env, jobId) {
+  const rows = await tursoQuery(env, 'SELECT mv.* FROM material_current mc JOIN material_versions mv ON mv.id=mc.material_version_id WHERE mc.job_id=? AND mv.state=\'succeeded\' AND mv.source_exists=1 AND mv.hard_gates_pass=1 LIMIT 1', [jobId]);
+  return rows[0] || null;
+}
+
+async function markCurrentIfAbsent(env, jobId, version) {
+  return setCurrentMaterial(env, jobId, version);
+}
+
+export { LEASE_SECONDS, ensureMaterialVersion, getMaterialVersion, claimMaterial, markMaterialSucceeded, markMaterialFailed, getCurrentSuccessfulMaterial, projectMaterialsReady, setCurrentMaterial, getCurrentMaterial };

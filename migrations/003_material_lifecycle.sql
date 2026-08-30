@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS material_versions (
   template_revision TEXT,
   renderer_revision TEXT,
   artifact_prefix TEXT,
+  is_current INTEGER NOT NULL DEFAULT 0 CHECK (is_current IN (0, 1)),
   attempt_count INTEGER NOT NULL DEFAULT 0,
   lease_token TEXT,
   lease_expires_at TEXT,
@@ -32,6 +33,8 @@ CREATE INDEX IF NOT EXISTS idx_material_versions_claimable
   ON material_versions (state, lease_expires_at);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_material_versions_one_active
   ON material_versions (job_id) WHERE state IN ('pending', 'claimed');
+CREATE UNIQUE INDEX IF NOT EXISTS idx_material_versions_one_current
+  ON material_versions (job_id) WHERE is_current=1;
 
 CREATE TABLE IF NOT EXISTS render_jobs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

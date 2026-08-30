@@ -21,7 +21,9 @@ import {
   markMaterialSucceeded,
   markMaterialFailed,
   getCurrentSuccessfulMaterial,
-  projectMaterialsReady
+  projectMaterialsReady,
+  setCurrentMaterial,
+  getCurrentMaterial
 } from '../_lib/material-store.js';
 import {
   hardGatesPass,
@@ -29,6 +31,9 @@ import {
   legacyMaterialKeys,
   materialKeys,
   sha256Hex,
+  validManifest,
+  currentKey,
+  validManifest,
   versionFor
 } from '../_lib/material-state.js';
 import { extractJobDescription } from '../_lib/extract-jd.mjs';
@@ -1006,6 +1011,7 @@ export async function onRequestPost(context) {
     hardGatesPass: hardGatesPass(quality)
   });
   if (!recorded) return json({ error: 'Material generation lease expired' }, 409);
+  await setCurrentMaterial(env, jobId, materialVersion);
   await markMaterialsReady(env, jobId, 'materials generated', materialVersion);
 
   // ── 7. Return success (short-lived signed links) ──
