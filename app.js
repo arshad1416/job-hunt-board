@@ -478,6 +478,7 @@
           <td>
             <div class="actions-cell">
               ${applyLink}
+              <span class="material-state" role="status" aria-live="polite">${materialState}</span>
               ${generateBtn}
               ${FOLLOW_UP_ELIGIBLE.has(normalizeStatus(job.status)) ? '<button class="btn btn-sm btn-outline" onclick="draftFollowup(' + inlineArg(job.id) + ')">✍ Follow-up</button>' : ''}
             </div>
