@@ -71,9 +71,9 @@ export async function onRequestGet(context) {
     material = await getMaterialVersion(env, jobId, normalizedVersion);
     const expected = new RegExp('^materials/' + String(jobId) + '/versions/' + normalizedVersion + '/attempt-[A-Za-z0-9_-]{1,80}$');
     if (!material || material.state !== 'succeeded' || !material.source_exists || !material.hard_gates_pass || typeof material.artifact_prefix !== 'string' || !expected.test(material.artifact_prefix)) return routeError('Unverified material version is unavailable', 404);
-    if (filename.endsWith('.pdf')) { const pdf = await getMaterialPdfState(env, jobId, material, env.JOB_MATERIALS_BUCKET); if (!pdf.ready) return error('PDF is not available', 404); }
+    if (filename.endsWith('.pdf')) { const pdf = await getMaterialPdfState(env, jobId, material, env.JOB_MATERIALS_BUCKET); if (!pdf.ready) return routeError(pdf.state === 'failed' ? 'PDF rendering failed' : 'PDF is not available', 404); }
   }
-  if (!version && filename.endsWith('.pdf')) return error('PDF requires a verified material version', 404);
+  if (!version && filename.endsWith('.pdf')) return routeError('PDF requires a verified material version', 404);
   const key = version ? material.artifact_prefix + '/' + filename : `materials/${jobId}/${filename}`;
   let object;
   try { object = await env.JOB_MATERIALS_BUCKET.get(key); } catch { return new Response(JSON.stringify({ error: 'Material storage unavailable' }), { status: 404 }); }

@@ -16,6 +16,10 @@ Run `node scripts/render-jobs.mjs --dry-run --limit 10` on the Pi only. Chromium
 
 The Pi worker runs `node scripts/render-jobs.mjs --dry-run` (optionally `--limit N`) with Pi-local Chromium, polling Turso under the existing lock. It recovers stale leases with bounded retries. PDFs are private, no-store, and signed with version-bound URLs; legacy Markdown remains supported. Migration 003 owns render jobs. Local verification is not a production canary.
 
+## Task 4 material delivery
+
+Material links expose Markdown/details immediately; PDF links appear only after verified versioned source integrity, successful render state, and both exact PDF objects. Errors are private/no-store and PDFs are never served through legacy flat paths.
+
 ## How It Works
 
 ```
