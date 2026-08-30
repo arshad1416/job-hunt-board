@@ -71,7 +71,8 @@ export async function onRequestGet(context) {
     if (!material || material.state !== 'succeeded' || !material.source_exists || !material.hard_gates_pass || typeof material.artifact_prefix !== 'string' || !expected.test(material.artifact_prefix)) return new Response(JSON.stringify({ error: 'Unverified material version is unavailable' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
   }
   const key = version ? material.artifact_prefix + '/' + filename : `materials/${jobId}/${filename}`;
-  const object = await env.JOB_MATERIALS_BUCKET.get(key);
+  let object;
+  try { object = await env.JOB_MATERIALS_BUCKET.get(key); } catch { return new Response(JSON.stringify({ error: 'Material storage unavailable' }), { status: 404 }); }
   if (version && object) {
     try {
       const read = async (item) => item.arrayBuffer ? item.arrayBuffer() : new TextEncoder().encode(await item.text()).buffer;
