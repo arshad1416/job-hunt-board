@@ -73,9 +73,7 @@ async function projectMaterialsReady(env, jobId, version) {
 }
 
 async function setCurrentMaterial(env, jobId, version) {
-  const rows = await tursoQuery(env, 'SELECT id FROM material_versions WHERE job_id=? AND version=? AND state=\'succeeded\' AND source_exists=1 AND hard_gates_pass=1', [jobId, version]);
-  if (!rows[0]) return false;
-  try { await tursoExecute(env, 'INSERT INTO material_current (job_id, material_version_id, version) VALUES (?, ?, ?) ON CONFLICT(job_id) DO NOTHING', [jobId, rows[0].id, version]); } catch { return false; }
+  try { await tursoExecute(env, 'INSERT INTO material_current (job_id, material_version_id, version) SELECT id, id, version FROM material_versions WHERE job_id=? AND version=? AND state=\'succeeded\' AND source_exists=1 AND hard_gates_pass=1 AND artifact_prefix IS NOT NULL ON CONFLICT(job_id) DO NOTHING', [jobId, version]); } catch { return false; }
   const current = await getCurrentMaterial(env, jobId);
   return current?.version === version;
 }
