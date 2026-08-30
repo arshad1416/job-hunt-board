@@ -22,7 +22,7 @@ export async function processRenderJob(row, { env, dryRun = false, execute = tur
   const terminal = async (ok, message = '') => {
     try { await leaseLive(); } catch (e) { if (e.message === 'lease_stale') return { id, state: 'stale' }; throw e; }
     const error = String(message).replace(/[\r\n]+/g, ' ').slice(0, 120);
-    const sql = ok ? "UPDATE render_jobs SET state='succeeded',completed_at=datetime('now'),error_code=NULL,retry_at=NULL,lease_token=NULL WHERE id=? AND state='claimed' AND lease_token=? AND lease_expires_at=? AND attempt_count=?" : "UPDATE render_jobs SET state='failed',error_code=?,retry_at=NULL,completed_at=datetime('now'),lease_token=NULL WHERE id=? AND state='claimed' AND lease_token=? AND lease_expires_at=? AND attempt_count=?";
+    const sql = ok ? "UPDATE render_jobs SET state='succeeded',completed_at=datetime('now'),error_code=NULL,retry_at=NULL,lease_token=NULL WHERE id=? AND state='claimed' AND lease_token=? AND lease_expires_at=? AND attempt_count=?" : "UPDATE render_jobs SET state='failed',error_code=?,retry_at=datetime('now','+' || ? || ' seconds'),completed_at=datetime('now'),lease_token=NULL WHERE id=? AND state='claimed' AND lease_token=? AND lease_expires_at=? AND attempt_count=?";
     const args = ok ? [id, token, expiry, attempt] : [error, Math.min(3600, 2 ** Math.max(0, attempt - 1)), id, token, expiry, attempt];
     try { const result = await execute(env, sql, args); return { id, state: Number(result?.affectedRowCount) === 1 ? (ok ? 'succeeded' : 'failed') : 'stale' }; } catch { return { id, state: 'stale' }; }
   };
