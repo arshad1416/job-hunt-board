@@ -10,7 +10,6 @@ export function claimSql(){return "UPDATE render_jobs SET state='claimed',lease_
 export async function processRenderJob(row, { env, dryRun = false, execute = tursoExecute, query = tursoQuery, bucket, renderer } = {}) {
   if (dryRun) return { id: row.id, state: row.state, dryRun: true };
   const { id, job_id: jobId, version, lease_token: token, lease_expires_at: expiry, attempt_count: attempt } = row;
-  if (!token || !expiry || !attempt) return { id, state: 'stale' };
   const prefix = String(row.source_artifact_prefix || '');
   // Attempt-unique prefixes remain immutable while this lease is active.
   const claimedExpiry = row.lease_expires_at;
@@ -66,5 +65,5 @@ export async function processRenderJob(row, { env, dryRun = false, execute = tur
 export async function pollRenderJobs({env,dryRun=false,limit=10,query=tursoQuery,execute=tursoExecute}={}){
   const lock=acquireFetchLock('render-jobs',{startedAtMs:Date.now()});
   if(!lock.ok) return {dryRun,claimed:[],error:'lock_unavailable'};
-  try {const rows=await query(env,"SELECT r.*,m.job_id,m.version,r.source_artifact_prefix FROM render_jobs r JOIN material_versions m ON m.id=r.material_version_id WHERE (r.state='pending' OR (r.state='failed' AND r.retry_at<=datetime('now')) OR (r.state='claimed' AND r.lease_expires_at<=datetime('now'))) AND r.attempt_count<? ORDER BY r.created_at LIMIT ?",[MAX_ATTEMPTS,Math.min(50,Math.max(1,limit))]);if(dryRun)return{dryRun:true,count:rows.length,rows};const claimed=[];for(const row of rows){const token=randomUUID(),result=await execute(env,claimSql(),[token,LEASE_SECONDS,row.id,MAX_ATTEMPTS]);if(Number(result?.affectedRowCount)===1)claimed.push({...row,lease_token:token})}return{dryRun:false,claimed};
+  try {const rows=await query(env,"SELECT r.*,m.job_id,m.version,r.source_artifact_prefix FROM render_jobs r JOIN material_versions m ON m.id=r.material_version_id WHERE (r.state='pending' OR (r.state='failed' AND r.retry_at<=datetime('now')) OR (r.state='claimed' AND r.lease_expires_at<=datetime('now'))) AND r.attempt_count<? ORDER BY r.created_at LIMIT ?",[MAX_ATTEMPTS,Math.min(50,Math.max(1,limit))]);if(dryRun)return{dryRun:true,count:rows.length,rows};const claimed=[];for(const row of rows){const token=randomUUID(),result=await execute(env,claimSql(),[token,LEASE_SECONDS,row.id,MAX_ATTEMPTS]);if(Number(result?.affectedRowCount)===1)claimed.push({...row,lease_token:token,lease_expires_at:new Date(Date.now()+LEASE_SECONDS*1000).toISOString(),attempt_count:Number(row.attempt_count)+1})}return{dryRun:false,claimed};
   } finally { lock.release(); } }
