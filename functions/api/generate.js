@@ -671,7 +671,7 @@ async function tryReuseMaterials(env, job, jobId) {
       jobId,
       version,
       leaseToken,
-      artifactPrefix: 'materials/' + jobId,
+      artifactPrefix: 'materials/' + jobId + '/versions/' + version,
       sourceExists: isCompleteSourceSet(complete),
       hardGatesPass: hardGatesPass(details.quality)
     });
@@ -749,49 +749,6 @@ export async function onRequestPost(context) {
     if (isCompleteSourceSet(existingSources)) {
       // Legacy artifacts are read-only during Task 2; never synthesize success.
       return json({ error: 'Legacy materials require verified versioned migration' }, 409);
-      // Existing legacy sets remain readable, but readiness still requires a
-      // successful lifecycle record; Task 4 will make versioned delivery the
-      // canonical path.
-      let cachedQuality = null;
-      try {
-        const details = await env.JOB_MATERIALS_BUCKET.get(existingSources.details.key || legacyMaterialKeys(jobId).details);
-        cachedQuality = details ? JSON.parse(await details.text()).quality || null : null;
-      } catch {}
-      if (cachedQuality && hardGatesPass(cachedQuality)) {
-        const cachedVersion = await versionFor({
-          normalizedJd: jobDescriptionText(job) || '',
-          profileRevision: 'legacy',
-          templateRevision: 'legacy',
-          rendererRevision: 'legacy'
-        });
-        await ensureMaterialVersion(env, { jobId, version: cachedVersion });
-        const cachedClaim = await claimMaterial(env, { jobId, version: cachedVersion });
-        if (cachedClaim.claimed) {
-          const recorded = await markMaterialSucceeded(env, {
-            jobId,
-            version: cachedVersion,
-            leaseToken: cachedClaim.leaseToken,
-            artifactPrefix: 'materials/' + jobId,
-            sourceExists: true,
-            hardGatesPass: true
-          });
-          if (!recorded) return json({ error: 'Cached materials state could not be recorded' }, 503);
-        }
-        await markMaterialsReady(env, jobId, 'complete materials already existed', cachedVersion);
-        return json({
-          success: true,
-          job_id: jobId,
-          cached: true,
-          materials: await signedMaterialUrls(env, jobId, undefined, materialVersion),
-          quality: {
-            ats_score: cachedQuality.ats?.score ?? null,
-            ats_pass: cachedQuality.atsPass === true,
-            facts_ok: cachedQuality.facts?.ok === true,
-            keyword_coverage: cachedQuality.keywordCoverage || null,
-            report: cachedQuality
-          }
-        });
-      }
     }
   }
 
