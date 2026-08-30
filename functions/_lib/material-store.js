@@ -37,7 +37,7 @@ async function resetFailedMaterial(env, { jobId, version }) {
 async function claimMaterial(env, { jobId, version, leaseSeconds = LEASE_SECONDS, leaseToken = secureToken() }) {
   await resetFailedMaterial(env, { jobId, version });
   const result = await tursoExecute(env,
-    "UPDATE material_versions SET state='claimed', lease_token=?, lease_expires_at=datetime('now', '+' || ? || ' seconds'), attempt_count=attempt_count+1, updated_at=datetime('now'), error_code=NULL, error_message=NULL WHERE job_id=? AND version=? AND (state='pending' OR (state='claimed' AND lease_expires_at <= datetime('now')))",
+    "UPDATE material_versions SET state='claimed', lease_token=?, lease_expires_at=datetime('now', '+' || ? || ' seconds'), attempt_count=attempt_count+1, updated_at=datetime('now'), error_code=NULL, error_message=NULL WHERE job_id=? AND version=? AND (state='pending' OR (state='claimed' AND lease_expires_at <= datetime('now'))) AND attempt_count < ?",
     [leaseToken, leaseSeconds, jobId, version, MAX_ATTEMPTS]);
   return { claimed: Number(result.affectedRowCount) === 1, leaseToken };
 }
@@ -78,7 +78,7 @@ async function setCurrentMaterial(env, jobId, version) {
   return current?.version === version;
 }
 
-async function getMaterialPdfState(env, jobId, material, bucket) { try { const rows=await tursoQuery(env, "SELECT state FROM render_jobs r JOIN material_versions m ON m.id=r.material_version_id WHERE m.job_id=? AND m.version=?", [material.id]); if(rows.length<2||!rows.every(r=>r.state==='succeeded')) return {state:rows.some(r=>r.state==='failed')?'failed':'pending',ready:false}; if(!bucket?.head) return {state:'pending',ready:false}; const p=rows[0].artifact_prefix || ('materials/'+jobId+'/versions/'+version); const [a,b]=await Promise.all([bucket.head(p+'/resume.pdf'),bucket.head(p+'/cover_letter.pdf')]); return {state:a&&b?'available':'pending',ready:Boolean(a&&b)} } catch { return {state:'pending',ready:false}; } }
+async function getMaterialPdfState(env, jobId, material, bucket) { try { const version=material?.version; const prefix=material?.artifact_prefix; if (!version || !/^materials\/\d+\/versions\/[a-f0-9]{64}\/[^/]+$/.test(prefix||'') || prefix.split('/')[1] !== String(jobId) || prefix.split('/')[3] !== String(version).toLowerCase()) return {state:'pending',ready:false}; const rows=await tursoQuery(env, "SELECT r.state FROM render_jobs r JOIN material_versions m ON m.id=r.material_version_id WHERE m.id=? AND m.version=? AND m.artifact_prefix=?", [material.id,version,prefix]); if(rows.length!==2||!rows.every(r=>r.state==='succeeded')) return {state:'pending',ready:false}; if(!bucket?.head)return {state:'pending',ready:false}; const [x,y]=await Promise.all([bucket.head(prefix+'/resume.pdf'),bucket.head(prefix+'/cover_letter.pdf')]); return {state:x&&y?'available':'pending',ready:Boolean(x&&y)} } catch { return {state:'pending',ready:false}; } }
 
 async function getCurrentMaterial(env, jobId) {
   const rows = await tursoQuery(env, 'SELECT mv.* FROM material_current mc JOIN material_versions mv ON mv.id=mc.material_version_id WHERE mc.job_id=? AND mv.state=\'succeeded\' AND mv.source_exists=1 AND mv.hard_gates_pass=1 LIMIT 1', [jobId]);
