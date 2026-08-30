@@ -60,13 +60,13 @@ function timingSafeEqual(a, b) {
  * Mint a signed token for one (job_id, filename) pair.
  * @returns {Promise<string>} token to pass as ?token=
  */
-async function signMaterialsToken(env, jobId, filename, ttlSeconds = DEFAULT_TTL_SECONDS) {
+async function signMaterialsToken(env, jobId, filename, ttlSeconds = DEFAULT_TTL_SECONDS, materialVersion = null) {
   const secret = signingSecret(env);
   if (!secret) {
     throw new Error('No signing secret configured (MATERIALS_SIGNING_KEY or DASHBOARD_AUTH_TOKEN)');
   }
   const exp = Math.floor(Date.now() / 1000) + ttlSeconds;
-  const sig = await hmac(secret, `${TOKEN_VERSION}:${jobId}:${filename}:${exp}`);
+  const sig = await hmac(secret, `${TOKEN_VERSION}:${jobId}:${materialVersion || '-'}:${filename}:${exp}`);
   return `${TOKEN_VERSION}.${exp}.${sig}`;
 }
 
@@ -75,7 +75,7 @@ async function signMaterialsToken(env, jobId, filename, ttlSeconds = DEFAULT_TTL
  * A token minted for job 41 will not open job 42, and expires on its own.
  * @returns {Promise<boolean>}
  */
-async function verifyMaterialsToken(env, jobId, filename, token) {
+async function verifyMaterialsToken(env, jobId, filename, token, materialVersion = null) {
   const secret = signingSecret(env);
   if (!secret || !token) return false;
 
@@ -89,7 +89,7 @@ async function verifyMaterialsToken(env, jobId, filename, token) {
   const exp = parseInt(expRaw, 10);
   if (Math.floor(Date.now() / 1000) >= exp) return false;
 
-  const expected = await hmac(secret, `${TOKEN_VERSION}:${jobId}:${filename}:${exp}`);
+  const expected = await hmac(secret, `${TOKEN_VERSION}:${jobId}:${materialVersion || '-'}:${filename}:${exp}`);
   return timingSafeEqual(sig, expected);
 }
 
