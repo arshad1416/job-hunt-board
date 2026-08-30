@@ -31,36 +31,14 @@ export async function onRequestGet(context) {
 
   // ── Validate filename against allow-list ──
   if (!Object.prototype.hasOwnProperty.call(ALLOWED_FILES, filename)) {
-    return new Response(
-      JSON.stringify({ error: 'Forbidden: file type not allowed' }),
-      {
-        status: 403,
-        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'X-Robots-Tag': 'noindex, nofollow' }
-      }
-    );
+    return routeError('Forbidden: file type not allowed', 403);
   }
 
   // ── Validate job_id is numeric ──
-  if (!/^\d+$/.test(jobId)) {
-    return new Response(
-      JSON.stringify({ error: 'Invalid job_id' }),
-      {
-        status: 400,
-        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'X-Robots-Tag': 'noindex, nofollow' }
-      }
-    );
-  }
+  if (!/^\d+$/.test(jobId)) return routeError('Invalid job_id', 400);
 
   // ── Check R2 binding exists ──
-  if (!env.JOB_MATERIALS_BUCKET) {
-    return new Response(
-      JSON.stringify({ error: 'R2 bucket not configured' }),
-      {
-        status: 503,
-        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'X-Robots-Tag': 'noindex, nofollow' }
-      }
-    );
-  }
+  if (!env.JOB_MATERIALS_BUCKET) return routeError('R2 bucket not configured', 503);
 
   // ── Fetch from R2 ──
   const version = params.version;
@@ -91,15 +69,7 @@ export async function onRequestGet(context) {
     } catch { return routeError('Material integrity verification failed', 404); }
   }
 
-  if (!object) {
-    return new Response(
-      JSON.stringify({ error: 'Not found: materials have not been generated for this job yet' }),
-      {
-        status: 404,
-        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'X-Robots-Tag': 'noindex, nofollow' }
-      }
-    );
-  }
+  if (!object) return routeError('Not found: materials have not been generated for this job yet', 404);
 
   // ── Stream the file with correct content-type ──
   const file = ALLOWED_FILES[filename];
