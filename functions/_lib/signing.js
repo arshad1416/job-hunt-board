@@ -97,7 +97,7 @@ async function verifyMaterialsToken(env, jobId, filename, token, materialVersion
  * Build the full set of signed material URLs for one job.
  * @returns {Promise<{resume: string, cover_letter: string, job_details: string}>}
  */
-async function signedMaterialUrls(env, jobId, ttlSeconds = DEFAULT_TTL_SECONDS, materialVersion = null, includePdf = false) {
+async function signedMaterialUrls(env, jobId, ttlSeconds = DEFAULT_TTL_SECONDS, materialVersion = null, includePdf = true) {
   const prefix = materialVersion ? `/api/materials/${jobId}/versions/${materialVersion}` : `/api/materials/${jobId}`;
   const [resume, cover, details, resumePdf, coverPdf] = await Promise.all((includePdf ? MATERIAL_FILES : MATERIAL_FILES.slice(0, 3)).map(f => signMaterialsToken(env, jobId, f, ttlSeconds, materialVersion)));
   return {
