@@ -2,6 +2,8 @@ import { tursoQuery, tursoExecute } from './turso.js';
 
 const LEASE_SECONDS = 300;
 const MAX_ERROR_LENGTH = 240;
+const MAX_ATTEMPTS = 3;
+const RETRY_BACKOFF_SECONDS = 30;
 
 function secureToken() {
   if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
@@ -28,7 +30,7 @@ async function getMaterialVersion(env, jobId, version) {
 }
 
 async function resetFailedMaterial(env, { jobId, version }) {
-  const result = await tursoExecute(env, "UPDATE material_versions SET state='pending', error_code=NULL, error_message=NULL, updated_at=datetime('now') WHERE job_id=? AND version=? AND state='failed' AND lease_token IS NULL AND NOT EXISTS (SELECT 1 FROM material_current WHERE job_id=?)", [jobId, version, jobId]);
+  const result = await tursoExecute(env, "UPDATE material_versions SET state='pending', updated_at=datetime('now') WHERE job_id=? AND version=? AND state='failed' AND lease_token IS NULL AND attempt_count < ? AND (completed_at IS NULL OR completed_at <= datetime('now', '-' || ? || ' seconds')) AND NOT EXISTS (SELECT 1 FROM material_current WHERE job_id=?)", [jobId, version, MAX_ATTEMPTS, RETRY_BACKOFF_SECONDS, jobId]);
   return Number(result.affectedRowCount) === 1;
 }
 
