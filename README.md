@@ -369,3 +369,6 @@ Personal project — Arshad Kazi. Not for redistribution.
 ## Task 4 operations
 
 Apply migrations 003 then additive 007. Run `node scripts/render-jobs.mjs --dry-run --limit 10` on the Pi for verification; production removes `--dry-run`. The worker uses a lock, stale-lease recovery, and bounded retries. Signed URLs are private/no-store and bind job, filename, version, and expiry. Legacy Markdown only is supported; PDFs require versioned readiness. Failed renders retry. No production canary has been run.
+## Task 4 operations
+
+Apply migrations 003 then 007. Run `node scripts/render-jobs.mjs --dry-run --limit 10` on the Pi; production removes `--dry-run`. The worker uses locking, stale-lease recovery, and bounded retries. Signed URLs are private/no-store and bind job, filename, version, and expiry. Legacy Markdown only remains supported; PDFs require verified versioned readiness. No production canary has been run.

@@ -638,3 +638,4 @@ select { cursor: pointer; }
   }
 }
 .pdf-state{font-size:.75rem;color:var(--text-secondary)}
+#pdf-status{font-size:.75rem;color:var(--text-secondary)}
