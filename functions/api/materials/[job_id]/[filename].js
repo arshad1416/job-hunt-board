@@ -14,7 +14,8 @@
 const ALLOWED_FILES = {
   'resume.md':       { type: 'text/markdown; charset=utf-8', disposition: 'attachment', download: 'resume.md' },
   'cover_letter.md': { type: 'text/markdown; charset=utf-8', disposition: 'attachment', download: 'cover_letter.md' },
-  'job_details.json': { type: 'application/json; charset=utf-8', disposition: 'inline', download: 'job_details.json' }
+  'job_details.json': { type: 'application/json; charset=utf-8', disposition: 'inline', download: 'job_details.json' },
+  'manifest.json': { type: 'application/json; charset=utf-8', disposition: 'inline', download: 'manifest.json' }
 };
 
 export async function onRequestGet(context) {
@@ -57,7 +58,8 @@ export async function onRequestGet(context) {
   }
 
   // ── Fetch from R2 ──
-  const key = `materials/${jobId}/${filename}`;
+  const version = params.version;
+  const key = version && /^[a-f0-9]{64}$/i.test(version) ? `materials/${jobId}/versions/${version.toLowerCase()}/${filename}` : `materials/${jobId}/${filename}`;
   const object = await env.JOB_MATERIALS_BUCKET.get(key);
 
   if (!object) {

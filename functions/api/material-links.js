@@ -9,6 +9,7 @@
    ═══════════════════════════════════════════════════════════════ */
 
 import { signedMaterialUrls, DEFAULT_TTL_SECONDS } from '../_lib/signing.js';
+import { getCurrentMaterial } from '../_lib/material-store.js';
 
 export async function onRequestPost(context) {
   const { request, env } = context;
@@ -30,7 +31,9 @@ export async function onRequestPost(context) {
 
   let materials;
   try {
-    materials = await signedMaterialUrls(env, String(jobId));
+    const current = await getCurrentMaterial(env, String(jobId));
+    if (!current) return json({ error: 'Verified materials are not available' }, 404);
+    materials = await signedMaterialUrls(env, String(jobId), DEFAULT_TTL_SECONDS, current.version);
   } catch (err) {
     console.error('Signing error:', err);
     return json({ error: 'Server signing key not configured' }, 503);

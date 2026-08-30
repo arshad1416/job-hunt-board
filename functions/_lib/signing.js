@@ -16,6 +16,7 @@ const DEFAULT_TTL_SECONDS = 900; // 15 minutes
 
 /** Files the dashboard can be handed links for. */
 const MATERIAL_FILES = ['resume.md', 'cover_letter.md', 'job_details.json'];
+const MATERIAL_ROUTE = '/api/materials';
 
 const encoder = new TextEncoder();
 
@@ -96,14 +97,13 @@ async function verifyMaterialsToken(env, jobId, filename, token) {
  * Build the full set of signed material URLs for one job.
  * @returns {Promise<{resume: string, cover_letter: string, job_details: string}>}
  */
-async function signedMaterialUrls(env, jobId, ttlSeconds = DEFAULT_TTL_SECONDS) {
-  const [resume, cover, details] = await Promise.all(
-    MATERIAL_FILES.map(f => signMaterialsToken(env, jobId, f, ttlSeconds))
-  );
+async function signedMaterialUrls(env, jobId, ttlSeconds = DEFAULT_TTL_SECONDS, materialVersion = null) {
+  const prefix = materialVersion ? `/api/materials/${jobId}/versions/${materialVersion}` : `/api/materials/${jobId}`;
+  const [resume, cover, details] = await Promise.all(MATERIAL_FILES.map(f => signMaterialsToken(env, jobId, f, ttlSeconds)));
   return {
-    resume: `/api/materials/${jobId}/resume.md?token=${resume}`,
-    cover_letter: `/api/materials/${jobId}/cover_letter.md?token=${cover}`,
-    job_details: `/api/materials/${jobId}/job_details.json?token=${details}`
+    resume: `${prefix}/resume.md?token=${resume}`,
+    cover_letter: `${prefix}/cover_letter.md?token=${cover}`,
+    job_details: `${prefix}/job_details.json?token=${details}`
   };
 }
 
