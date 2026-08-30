@@ -31,9 +31,6 @@ import {
   legacyMaterialKeys,
   materialKeys,
   sha256Hex,
-  validManifest,
-  currentKey,
-  validManifest,
   versionFor
 } from '../_lib/material-state.js';
 import { extractJobDescription } from '../_lib/extract-jd.mjs';
@@ -571,7 +568,9 @@ async function tryReuseMaterials(env, job, jobId) {
     if (!claim.claimed) return null;
     leaseToken = claim.leaseToken;
 
-    const srcPrefix = 'materials/' + best.id;
+    const source = await getCurrentMaterial(env, best.id);
+    if (!source) return null;
+    const srcPrefix = source.artifact_prefix || ('materials/' + best.id + '/versions/' + source.version);
     const [resumeObj, coverObj, detailsObj] = await Promise.all([
       env.JOB_MATERIALS_BUCKET.get(srcPrefix + '/resume.md'),
       env.JOB_MATERIALS_BUCKET.get(srcPrefix + '/cover_letter.md'),
@@ -759,7 +758,7 @@ export async function onRequestPost(context) {
           success: true,
           job_id: jobId,
           cached: true,
-          materials: await signedMaterialUrls(env, jobId),
+          materials: await signedMaterialUrls(env, jobId, undefined, materialVersion),
           quality: {
             ats_score: cachedQuality.ats?.score ?? null,
             ats_pass: cachedQuality.atsPass === true,
@@ -1011,7 +1010,12 @@ export async function onRequestPost(context) {
     hardGatesPass: hardGatesPass(quality)
   });
   if (!recorded) return json({ error: 'Material generation lease expired' }, 409);
-  await setCurrentMaterial(env, jobId, materialVersion);
+  const currentSet = await setCurrentMaterial(env, jobId, materialVersion);
+  if (!currentSet) {
+    const current = await getCurrentMaterial(env, jobId);
+    if (!current) return json({ error: 'Verified material pointer unavailable' }, 409);
+    materialVersion = current.version;
+  }
   await markMaterialsReady(env, jobId, 'materials generated', materialVersion);
 
   // ── 7. Return success (short-lived signed links) ──
@@ -1020,7 +1024,7 @@ export async function onRequestPost(context) {
     job_id: jobId,
     cached: false,
     reused: false,
-    materials: await signedMaterialUrls(env, jobId),
+    materials: await signedMaterialUrls(env, jobId, undefined, materialVersion),
     quality: {
       ats_score: quality.ats.score,
       ats_pass: quality.atsPass,
