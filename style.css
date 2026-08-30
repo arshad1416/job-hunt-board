@@ -1,5 +1,7 @@
 /* ═══════════════════════════════════════════════════════════════
    Job Hunt Board — Dark Theme Stylesheet
+.material-state{font-size:.75rem;color:var(--text-secondary);white-space:nowrap}
+
    Responsive: Desktop → Tablet → Mobile cards
    ═══════════════════════════════════════════════════════════════ */
 
