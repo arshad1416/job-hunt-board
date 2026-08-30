@@ -115,8 +115,8 @@ If `DASHBOARD_AUTH_TOKEN` is unset on the server, every non-public route fails c
   reference resume loaded from private R2 objects
   (`assets/resume_profile.yaml`, `assets/master_resume_{ev,ai}.md` — refresh via
   `npx wrangler r2 object put`), enforces the skill's ATS output standards and
-  truthful-only ground rules, and falls back to an embedded summary profile when
-  R2 is unavailable.
+  truthful-only ground rules, and fails closed with a configuration error when
+  private R2 profile objects are unavailable.
 
 ---
 
