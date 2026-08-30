@@ -1,6 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════
    Job Hunt Board — Dark Theme Stylesheet
-.material-state{font-size:.75rem;color:var(--text-secondary);white-space:nowrap}
 
    Responsive: Desktop → Tablet → Mobile cards
    ═══════════════════════════════════════════════════════════════ */
@@ -637,5 +636,5 @@ select { cursor: pointer; }
     margin-bottom: 1px;
   }
 }
-.pdf-state{font-size:.75rem;color:var(--text-secondary)}
 #pdf-status{font-size:.75rem;color:var(--text-secondary)}
+.material-state,.pdf-state{font-size:.75rem;color:var(--text-secondary);white-space:nowrap}
