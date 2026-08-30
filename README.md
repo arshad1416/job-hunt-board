@@ -12,6 +12,10 @@ A single-page job hunt dashboard deployed on **Cloudflare Pages** that renders a
 
 Run `node scripts/render-jobs.mjs --dry-run --limit 10` on the Pi only. Chromium is Pi-local; the worker polls Turso under the existing lock, recovers stale leases, and uses bounded retries. PDFs are private, signed with version-bound URLs, and legacy Markdown remains supported. Migration 003 owns render jobs. No production canary has been run locally.
 
+## Task 4 materials
+
+The Pi worker runs `node scripts/render-jobs.mjs --dry-run` (optionally `--limit N`) with Pi-local Chromium, polling Turso under the existing lock. It recovers stale leases with bounded retries. PDFs are private, no-store, and signed with version-bound URLs; legacy Markdown remains supported. Migration 003 owns render jobs. Local verification is not a production canary.
+
 ## How It Works
 
 ```

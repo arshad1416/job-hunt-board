@@ -6,6 +6,8 @@
 .material-state { font-size: 0.75rem; color: var(--text-secondary); }
 
 /* ── Portal status subset: badges, indicators, follow-up ─────── */
+.material-state { font-size: 0.75rem; color: var(--text-secondary); }
+
 .status-badge {
   display: inline-block;
   padding: 2px 8px;
