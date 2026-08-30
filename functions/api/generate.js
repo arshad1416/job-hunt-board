@@ -951,18 +951,20 @@ export async function onRequestPost(context) {
     }, null, 2);
 
     try {
+      const stageToken = String(materialLeaseToken).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 80);
+      const stagedKeys = Object.fromEntries(Object.entries(key).map(([name, value]) => [name, value.replace(`/versions/${materialVersion}/`, `/versions/${materialVersion}/attempt-${stageToken}/`)]));
       const manifest = JSON.stringify({ job_id: jobId, profile_revision: 'verified', template_revision: 'source-v1', renderer_revision: 'source-v1', version: materialVersion, artifacts: { resume: await sha256Hex(resumeMd), cover_letter: await sha256Hex(coverMd), job_details: await sha256Hex(jobDetails) } });
       await Promise.all([
-        env.JOB_MATERIALS_BUCKET.put(key.resume, resumeMd, {
+        env.JOB_MATERIALS_BUCKET.put(stagedKeys.resume, resumeMd, {
           httpMetadata: { contentType: 'text/markdown; charset=utf-8' }
         }),
-        env.JOB_MATERIALS_BUCKET.put(key.coverLetter, coverMd, {
+        env.JOB_MATERIALS_BUCKET.put(stagedKeys.coverLetter, coverMd, {
           httpMetadata: { contentType: 'text/markdown; charset=utf-8' }
         }),
-        env.JOB_MATERIALS_BUCKET.put(key.details, jobDetails, {
+        env.JOB_MATERIALS_BUCKET.put(stagedKeys.details, jobDetails, {
           httpMetadata: { contentType: 'application/json' }
         }),
-        env.JOB_MATERIALS_BUCKET.put(key.manifest, manifest, {
+        env.JOB_MATERIALS_BUCKET.put(stagedKeys.manifest, manifest, {
           httpMetadata: { contentType: 'application/json' }
         })
       ]);
@@ -974,10 +976,10 @@ export async function onRequestPost(context) {
   }
 
   const complete = await Promise.all([
-    env.JOB_MATERIALS_BUCKET.head(materialKeys(jobId, materialVersion).resume),
-    env.JOB_MATERIALS_BUCKET.head(materialKeys(jobId, materialVersion).coverLetter),
-    env.JOB_MATERIALS_BUCKET.head(materialKeys(jobId, materialVersion).details),
-    env.JOB_MATERIALS_BUCKET.head(materialKeys(jobId, materialVersion).manifest)
+    env.JOB_MATERIALS_BUCKET.head(stagedKeys.resume),
+    env.JOB_MATERIALS_BUCKET.head(stagedKeys.coverLetter),
+    env.JOB_MATERIALS_BUCKET.head(stagedKeys.details),
+    env.JOB_MATERIALS_BUCKET.head(stagedKeys.manifest)
   ]);
   const manifestObj = await env.JOB_MATERIALS_BUCKET.get(materialKeys(jobId, materialVersion).manifest);
   const [resumeObj, coverObj, detailsObj] = await Promise.all([env.JOB_MATERIALS_BUCKET.get(materialKeys(jobId, materialVersion).resume), env.JOB_MATERIALS_BUCKET.get(materialKeys(jobId, materialVersion).coverLetter), env.JOB_MATERIALS_BUCKET.get(materialKeys(jobId, materialVersion).details)]);
@@ -993,7 +995,7 @@ export async function onRequestPost(context) {
     jobId,
     version: materialVersion,
     leaseToken: materialLeaseToken,
-    artifactPrefix: 'materials/' + jobId + '/versions/' + materialVersion,
+    artifactPrefix: stagedKeys.resume.replace('/resume.md', ''),
     sourceExists: sourceSetExists,
     hardGatesPass: hardGatesPass(quality)
   });
