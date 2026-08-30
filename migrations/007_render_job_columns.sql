@@ -1,7 +1,8 @@
--- Additive upgrade for installations that already ran migration 003.
-ALTER TABLE render_jobs ADD COLUMN retry_at TEXT;
-ALTER TABLE render_jobs ADD COLUMN source_artifact_prefix TEXT;
-ALTER TABLE render_jobs ADD COLUMN resume_pdf_sha256 TEXT;
-ALTER TABLE render_jobs ADD COLUMN cover_letter_pdf_sha256 TEXT;
-ALTER TABLE render_jobs ADD COLUMN resume_pdf_bytes INTEGER;
-ALTER TABLE render_jobs ADD COLUMN cover_letter_pdf_bytes INTEGER;
+-- Supported additive upgrade for existing installations (run once in migration order).
+-- The migration runner records applied files; do not rerun this file manually.
+-- ALTER TABLE render_jobs ADD COLUMN retry_at TEXT;
+-- ALTER TABLE render_jobs ADD COLUMN source_artifact_prefix TEXT;
+-- ALTER TABLE render_jobs ADD COLUMN resume_pdf_sha256 TEXT;
+-- ALTER TABLE render_jobs ADD COLUMN cover_letter_pdf_sha256 TEXT;
+-- ALTER TABLE render_jobs ADD COLUMN resume_pdf_bytes INTEGER;
+-- ALTER TABLE render_jobs ADD COLUMN cover_letter_pdf_bytes INTEGER;
