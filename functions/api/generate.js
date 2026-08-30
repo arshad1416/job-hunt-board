@@ -31,6 +31,7 @@ import {
   legacyMaterialKeys,
   materialKeys,
   sha256Hex,
+  validateManifestBytes,
   versionFor
 } from '../_lib/material-state.js';
 import { extractJobDescription } from '../_lib/extract-jd.mjs';
@@ -997,10 +998,12 @@ export async function onRequestPost(context) {
     env.JOB_MATERIALS_BUCKET.head(materialKeys(jobId, materialVersion).manifest)
   ]);
   const manifestObj = await env.JOB_MATERIALS_BUCKET.get(materialKeys(jobId, materialVersion).manifest);
+  const [resumeObj, coverObj, detailsObj] = await Promise.all([env.JOB_MATERIALS_BUCKET.get(materialKeys(jobId, materialVersion).resume), env.JOB_MATERIALS_BUCKET.get(materialKeys(jobId, materialVersion).coverLetter), env.JOB_MATERIALS_BUCKET.get(materialKeys(jobId, materialVersion).details)]);
   let parsedManifest = null;
   try { parsedManifest = manifestObj ? JSON.parse(await manifestObj.text()) : null; } catch {}
-  const sourceSetExists = isCompleteSourceSet({ resume: complete[0], coverLetter: complete[1], details: complete[2], manifest: complete[3] }) && parsedManifest && validManifest(parsedManifest, { jobId, version: materialVersion, hashes: { resume: parsedManifest.artifacts.resume, cover_letter: parsedManifest.artifacts.cover_letter, job_details: parsedManifest.artifacts.job_details } });
-  if (!sourceSetExists) {
+  const sourceSetExists = isCompleteSourceSet({ resume: resumeObj, coverLetter: coverObj, details: detailsObj, manifest: manifestObj });
+  const hashesValid = sourceSetExists && parsedManifest && await validateManifestBytes(parsedManifest, { resume: await resumeObj.text(), coverLetter: await coverObj.text(), details: await detailsObj.text() }, { jobId, version: materialVersion });
+  if (!sourceSetExists || !hashesValid) {
     await markMaterialFailed(env, { jobId, version: materialVersion, leaseToken: materialLeaseToken, errorCode: 'source_incomplete', errorMessage: 'Versioned source objects are incomplete after write' });
     return json({ error: 'Stored materials are incomplete' }, 500);
   }

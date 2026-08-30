@@ -51,16 +51,23 @@ function isCompleteSourceSet(objects) {
   return Boolean(objects?.resume && objects?.coverLetter && objects?.details && objects?.manifest);
 }
 
+/** Validate the immutable source manifest before terminal success or reuse. */
 function validManifest(manifest, { jobId, version, hashes = null } = {}) {
   if (!manifest || typeof manifest !== 'object') return false;
   if (String(manifest.job_id) !== String(jobId) || String(manifest.version).toLowerCase() !== String(version).toLowerCase()) return false;
-  if (!manifest.profile_revision || !manifest.template_revision || !manifest.renderer_revision) return false;
+  if (!(manifest.profile_revision || manifest.profile) || !(manifest.template_revision || manifest.template) || !(manifest.renderer_revision || manifest.renderer)) return false;
   const artifacts = manifest.artifacts;
   if (!artifacts || typeof artifacts !== 'object') return false;
   if (!/^[a-f0-9]{64}$/i.test(String(artifacts.resume || '')) ||
       !/^[a-f0-9]{64}$/i.test(String(artifacts.cover_letter || '')) ||
       !/^[a-f0-9]{64}$/i.test(String(artifacts.job_details || ''))) return false;
   return !hashes || (hashes.resume === artifacts.resume && hashes.cover_letter === artifacts.cover_letter && hashes.job_details === artifacts.job_details);
+}
+
+async function validateManifestBytes(manifest, bytes, identity) {
+  if (!validManifest(manifest, identity)) return false;
+  const hashes = { resume: await sha256Hex(bytes.resume), cover_letter: await sha256Hex(bytes.coverLetter), job_details: await sha256Hex(bytes.details) };
+  return validManifest(manifest, { ...identity, hashes });
 }
 
 function currentKey(jobId) {
@@ -129,5 +136,6 @@ export {
   materialKeys,
   legacyMaterialKeys,
   validManifest,
+  validateManifestBytes,
   currentKey
 };
