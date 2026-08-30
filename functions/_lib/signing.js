@@ -103,7 +103,7 @@ async function signedMaterialUrls(env, jobId, ttlSeconds = DEFAULT_TTL_SECONDS, 
   return {
     resume: `${prefix}/resume.md?token=${resume}`,
     cover_letter: `${prefix}/cover_letter.md?token=${cover}`,
-    job_details: `${prefix}/job_details.json?token=${details}`, resume_pdf: `${prefix}/resume.pdf?token=${resumePdf}`, cover_letter_pdf: `${prefix}/cover_letter.pdf?token=${coverPdf}`
+    job_details: `${prefix}/job_details.json?token=${details}`, resume_pdf: `${prefix}/resume.pdf?token=${resumePdf}`, cover_letter_pdf: `${prefix}/cover_letter.pdf?token=${coverPdf}`, resume_pdf: `${prefix}/resume.pdf?token=${resumePdf}`, cover_letter_pdf: `${prefix}/cover_letter.pdf?token=${coverPdf}`
   };
 }
 
