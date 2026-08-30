@@ -12,7 +12,7 @@ export async function processRenderJob(row, { env, dryRun = false, execute = tur
   const { id, job_id: jobId, version, lease_token: token, lease_expires_at: expiry, attempt_count: attempt } = row;
   const prefix = String(row.artifact_prefix || '');
   const parts = prefix.split('/');
-  const validPrefix = parts.length === 5 && parts[0] === 'materials' && parts[1] === String(jobId) && parts[2] === 'versions' && parts[3] === String(version).toLowerCase() && parts[4] === `attempt-${token}` && /^\d+$/.test(parts[1]) && /^[a-f0-9]{64}$/.test(parts[3]);
+  const validPrefix = parts.length === 5 && parts[0] === 'materials' && parts[1] === String(jobId) && parts[2] === 'versions' && parts[3] === String(version).toLowerCase() && (parts[4] === token || parts[4] === `attempt-${token}`) && /^\d+$/.test(parts[1]) && /^[a-f0-9]{64}$/.test(parts[3]);
   const leaseLive = async () => {
     if (bucket?.checkLease) {
       if (!(await bucket.checkLease(row))) throw new Error('lease_stale');
