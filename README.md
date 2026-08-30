@@ -8,6 +8,10 @@ A single-page job hunt dashboard deployed on **Cloudflare Pages** that renders a
 
 ---
 
+## Task 4 materials worker
+
+Run `node scripts/render-jobs.mjs --dry-run --limit 10` on the Pi only. Chromium is Pi-local; the worker polls Turso under the existing lock, recovers stale leases, and uses bounded retries. PDFs are private, signed with version-bound URLs, and legacy Markdown remains supported. Migration 003 owns render jobs. No production canary has been run locally.
+
 ## How It Works
 
 ```

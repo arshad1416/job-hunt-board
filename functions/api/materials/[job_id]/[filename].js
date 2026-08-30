@@ -72,6 +72,7 @@ export async function onRequestGet(context) {
     const expected = new RegExp('^materials/' + String(jobId) + '/versions/' + normalizedVersion + '/attempt-[A-Za-z0-9_-]{1,80}$');
     if (!material || material.state !== 'succeeded' || !material.source_exists || !material.hard_gates_pass || typeof material.artifact_prefix !== 'string' || !expected.test(material.artifact_prefix)) return new Response(JSON.stringify({ error: 'Unverified material version is unavailable' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
   }
+  if (!version && filename.endsWith('.pdf')) return error('PDF requires a verified material version', 404);
   const key = version ? material.artifact_prefix + '/' + filename : `materials/${jobId}/${filename}`;
   let object;
   try { object = await env.JOB_MATERIALS_BUCKET.get(key); } catch { return new Response(JSON.stringify({ error: 'Material storage unavailable' }), { status: 404 }); }

@@ -3,6 +3,8 @@
    Responsive: Desktop → Tablet → Mobile cards
    ═══════════════════════════════════════════════════════════════ */
 
+.material-state { font-size: 0.75rem; color: var(--text-secondary); }
+
 /* ── Portal status subset: badges, indicators, follow-up ─────── */
 .status-badge {
   display: inline-block;
