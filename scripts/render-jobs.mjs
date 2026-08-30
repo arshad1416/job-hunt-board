@@ -11,7 +11,6 @@ export async function processRenderJob(row, { env, dryRun = false, execute = tur
   if (dryRun) return { id: row.id, state: row.state, dryRun: true };
   const { id, job_id: jobId, version, lease_token: token, lease_expires_at: expiry, attempt_count: attempt } = row;
   const prefix = String(row.source_artifact_prefix || '');
-  if (!prefix) return terminal(false, 'source_prefix_missing');
   const parts = prefix.split('/');
   const validPrefix = row.document === 'pair' && parts.length === 5 && parts[0] === 'materials' && parts[1] === String(jobId) && parts[2] === 'versions' && parts[3] === String(version).toLowerCase() && parts[4] === `attempt-${token}` && /^[A-Za-z0-9_-]{1,80}$/.test(token) && /^\d+$/.test(parts[1]) && /^[a-f0-9]{64}$/.test(parts[3]);
   const leaseLive = async () => {
@@ -33,6 +32,7 @@ export async function processRenderJob(row, { env, dryRun = false, execute = tur
     const args = ok ? [id, token, expiry, attempt] : max ? [error, id, token, expiry, attempt] : [error, Math.min(3600, 2 ** Math.max(0, attempt - 1)), id, token, expiry, attempt];
     try { const result = await execute(env, sql, args); return { id, state: Number(result?.affectedRowCount) === 1 ? (ok ? 'succeeded' : 'failed') : 'stale' }; } catch { return { id, state: 'stale' }; }
   };
+  if (!prefix) return terminal(false, 'source_prefix_missing');
   if (!validPrefix) return terminal(false, 'source_prefix_invalid');
   try {
     const read = async (name) => { await leaseLive(); const object = await bucket.get(prefix + '/' + name); if (!object) throw new Error('source_missing'); return object.arrayBuffer ? new Uint8Array(await object.arrayBuffer()) : new TextEncoder().encode(await object.text()); };
