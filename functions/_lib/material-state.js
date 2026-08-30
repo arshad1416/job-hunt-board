@@ -55,7 +55,7 @@ function isCompleteSourceSet(objects) {
 function validManifest(manifest, { jobId, version, hashes = null } = {}) {
   if (!manifest || typeof manifest !== 'object') return false;
   if (String(manifest.job_id) !== String(jobId) || String(manifest.version).toLowerCase() !== String(version).toLowerCase()) return false;
-  if (!(manifest.profile_revision || manifest.profile) || !(manifest.template_revision || manifest.template) || !(manifest.renderer_revision || manifest.renderer)) return false;
+  if (!manifest.profile_revision || !manifest.template_revision || !manifest.renderer_revision) return false;
   const artifacts = manifest.artifacts;
   if (!artifacts || typeof artifacts !== 'object') return false;
   if (!/^[a-f0-9]{64}$/i.test(String(artifacts.resume || '')) ||

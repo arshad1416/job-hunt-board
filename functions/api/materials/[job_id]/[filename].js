@@ -61,6 +61,7 @@ export async function onRequestGet(context) {
 
   // ── Fetch from R2 ──
   const version = params.version;
+  if (version && !/^[a-f0-9]{64}$/i.test(version)) return new Response(JSON.stringify({ error: 'Invalid material version' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
   if (version) { const current = await getCurrentMaterial(env, jobId); if (!current || current.version.toLowerCase() !== version.toLowerCase()) return new Response(JSON.stringify({ error: 'Historical material version is unavailable' }), { status: 404, headers: { 'Content-Type': 'application/json' } }); }
   const key = version && /^[a-f0-9]{64}$/i.test(version) ? `materials/${jobId}/versions/${version.toLowerCase()}/${filename}` : `materials/${jobId}/${filename}`;
   const object = await env.JOB_MATERIALS_BUCKET.get(key);

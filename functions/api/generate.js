@@ -570,7 +570,7 @@ async function tryReuseMaterials(env, job, jobId) {
     leaseToken = claim.leaseToken;
 
     const source = await getCurrentMaterial(env, best.id);
-    if (!source) return null;
+    if (!source) { await markMaterialFailed(env, { jobId, version, leaseToken, errorCode: 'source_unavailable', errorMessage: 'Verified source is unavailable' }); leaseToken = null; return null; }
     if (!source.version || !source.artifact_prefix?.includes('/versions/')) {
       await markMaterialFailed(env, { jobId, version, leaseToken, errorCode: 'legacy_source', errorMessage: 'Reusable source is not versioned' });
       leaseToken = null;
