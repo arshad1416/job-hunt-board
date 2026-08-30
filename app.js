@@ -697,16 +697,9 @@
       showToast('Please set your auth token first (🔑 Token button).', 'error');
       showModal('token-modal');
       return;
-    }
-
-    const resumeTab = window.open('', '_blank');
-    const coverTab = window.open('', '_blank');
-    showToast('Opening materials in new tabs…', 'info', 2000);
+    showToast('Checking material readiness…', 'info', 2000);
 
     try {
-      const res = await fetch('/api/material-links', {
-        method: 'POST',
-        headers: authHeaders(),
         body: JSON.stringify({ job_id: jobId })
       });
 
