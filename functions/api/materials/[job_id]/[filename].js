@@ -63,7 +63,13 @@ export async function onRequestGet(context) {
   const version = params.version;
   if (version && !/^[a-f0-9]{64}$/i.test(version)) return new Response(JSON.stringify({ error: 'Invalid material version' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
   let artifactPrefix = null;
-  if (version) { const material = await getMaterialVersion(env, jobId, version); if (!material || material.state !== 'succeeded' || !material.source_exists || !material.hard_gates_pass || material.artifact_prefix !== `materials/${jobId}/versions/${version.toLowerCase()}/attempt-${String(material.artifact_prefix || '').split('/attempt-')[1]}` || !/^materials\/\d+\/versions\/[a-f0-9]{64}\/attempt-[A-Za-z0-9_-]+$/.test(material.artifact_prefix || '')) return new Response(JSON.stringify({ error: 'Unverified material version is unavailable' }), { status: 404, headers: { 'Content-Type': 'application/json' } }); artifactPrefix = material.artifact_prefix; }
+  if (version) {
+    const normalizedVersion = version.toLowerCase();
+    const material = await getMaterialVersion(env, jobId, normalizedVersion);
+    const expected = new RegExp(`^materials/${String(jobId)}/versions/${normalizedVersion}/attempt-([A-Za-z0-9_-]{1,80})$`);
+    if (!material || material.state !== 'succeeded' || !material.source_exists || !material.hard_gates_pass || typeof material.artifact_prefix !== 'string' || !expected.test(material.artifact_prefix)) return new Response(JSON.stringify({ error: 'Unverified material version is unavailable' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
+    artifactPrefix = material.artifact_prefix;
+  }
   const key = version ? artifactPrefix + '/' + filename : `materials/${jobId}/${filename}`;
   const object = await env.JOB_MATERIALS_BUCKET.get(key);
 
