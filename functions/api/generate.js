@@ -837,7 +837,7 @@ export async function onRequestPost(context) {
       cached: false,
       reused: true,
       reused_from_job_id: reused.reused_from_job_id,
-      materials: await signedMaterialUrls(env, jobId)
+      materials: await signedMaterialUrls(env, jobId, undefined, reused.version)
     });
   }
 
