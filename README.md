@@ -8,29 +8,9 @@ A single-page job hunt dashboard deployed on **Cloudflare Pages** that renders a
 
 ---
 
-## Task 4 materials worker
+## Task 4 materials delivery
 
-Run `node scripts/render-jobs.mjs --dry-run --limit 10` on the Pi only. Chromium is Pi-local; the worker polls Turso under the existing lock, recovers stale leases, and uses bounded retries. PDFs are private, signed with version-bound URLs, and legacy Markdown remains supported. Migration 003 owns render jobs. No production canary has been run locally.
-
-## Task 4 materials
-
-The Pi worker runs `node scripts/render-jobs.mjs --dry-run` (optionally `--limit N`) with Pi-local Chromium, polling Turso under the existing lock. It recovers stale leases with bounded retries. PDFs are private, no-store, and signed with version-bound URLs; legacy Markdown remains supported. Migration 003 owns render jobs. Local verification is not a production canary.
-
-## Task 4 material delivery
-
-Material links expose Markdown/details immediately; PDF links appear only after verified versioned source integrity, successful render state, and both exact PDF objects. Errors are private/no-store and PDFs are never served through legacy flat paths.
-
-## Task 4 delivery
-
-Run the Pi-only worker with `node scripts/render-jobs.mjs --dry-run --limit 10`; it polls Turso under the existing lock, recovers stale leases, and uses bounded exponential retries. PDFs require verified versioned sources and successful pair rendering; signed URLs are private/no-store and legacy Markdown remains supported. No production canary has been run.
-
-## Task 4 delivery operations
-
-Run the Pi-only `node scripts/render-jobs.mjs --dry-run --limit 10` worker. It polls Turso under the existing lock, recovers stale leases, and applies bounded retries. Private PDFs require verified versioned sources and successful render readiness; signed URLs include the version. Legacy Markdown remains supported. No production canary has been run.
-
-## Task 4 delivery contract
-
-Migration 003 owns the single pair render job per material version. The Pi-only worker polls Turso under the existing lock with `--dry-run` and `--limit`; stale leases recover with bounded retries. PDFs require verified versioned source, successful pair state, and both exact objects. Signed links are private and version-bound; legacy Markdown remains supported. No production canary has been run.
+Apply migrations `003_material_lifecycle.sql` then additive `007_render_job_columns.sql` for existing 003 installations. On the Pi, dry-run with `node scripts/render-jobs.mjs --dry-run --limit 10`; production runs `node scripts/render-jobs.mjs --limit 10` with Pi-local Chromium. The worker uses a lock, stale-lease recovery, bounded retries, and rollback of partial PDFs. Signed links are private/no-store and bind job, exact filename, version, and expiry; only verified legacy Markdown is supported, never legacy PDFs. Failed jobs recover through the bounded retry schedule. No production canary has been run.
 
 ## How It Works
 
