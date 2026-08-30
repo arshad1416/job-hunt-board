@@ -952,7 +952,7 @@ export async function onRequestPost(context) {
 
     try {
       const stageToken = String(materialLeaseToken).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 80);
-      const stagedKeys = Object.fromEntries(Object.entries(key).map(([name, value]) => [name, value.replace(`/versions/${materialVersion}/`, `/versions/${materialVersion}/attempt-${stageToken}/`)]));
+      stagedKeys = Object.fromEntries(Object.entries(key).map(([name, value]) => [name, value.replace(`/versions/${materialVersion}/`, `/versions/${materialVersion}/attempt-${stageToken}/`)]));
       const manifest = JSON.stringify({ job_id: jobId, profile_revision: 'verified', template_revision: 'source-v1', renderer_revision: 'source-v1', version: materialVersion, artifacts: { resume: await sha256Hex(resumeMd), cover_letter: await sha256Hex(coverMd), job_details: await sha256Hex(jobDetails) } });
       await Promise.all([
         env.JOB_MATERIALS_BUCKET.put(stagedKeys.resume, resumeMd, {

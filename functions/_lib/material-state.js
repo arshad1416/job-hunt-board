@@ -85,7 +85,8 @@ function normalizeForVersion(value) {
 
 async function sha256Hex(value) {
   if (!globalThis.crypto?.subtle) throw new Error('Web Crypto is unavailable');
-  const digest = await globalThis.crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(value)));
+  const input = typeof value === 'string' ? new TextEncoder().encode(value) : value instanceof ArrayBuffer ? value : ArrayBuffer.isView(value) ? value : new TextEncoder().encode(String(value));
+  const digest = await globalThis.crypto.subtle.digest('SHA-256', input);
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
