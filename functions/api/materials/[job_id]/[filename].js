@@ -62,15 +62,14 @@ export async function onRequestGet(context) {
   // ── Fetch from R2 ──
   const version = params.version;
   if (version && !/^[a-f0-9]{64}$/i.test(version)) return new Response(JSON.stringify({ error: 'Invalid material version' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
-  let artifactPrefix = null;
+  let material = null;
   if (version) {
     const normalizedVersion = version.toLowerCase();
-    const material = await getMaterialVersion(env, jobId, normalizedVersion);
-    const expected = new RegExp(`^materials/${String(jobId)}/versions/${normalizedVersion}/attempt-([A-Za-z0-9_-]{1,80})$`);
+    material = await getMaterialVersion(env, jobId, normalizedVersion);
+    const expected = new RegExp('^materials/' + String(jobId) + '/versions/' + normalizedVersion + '/attempt-[A-Za-z0-9_-]{1,80}$');
     if (!material || material.state !== 'succeeded' || !material.source_exists || !material.hard_gates_pass || typeof material.artifact_prefix !== 'string' || !expected.test(material.artifact_prefix)) return new Response(JSON.stringify({ error: 'Unverified material version is unavailable' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
-    artifactPrefix = material.artifact_prefix;
   }
-  const key = version ? artifactPrefix + '/' + filename : `materials/${jobId}/${filename}`;
+  const key = version ? material.artifact_prefix + '/' + filename : `materials/${jobId}/${filename}`;
   const object = await env.JOB_MATERIALS_BUCKET.get(key);
 
   if (!object) {
