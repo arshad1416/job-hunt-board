@@ -434,9 +434,10 @@
       const hasMaterials = job.has_materials;
 
       // Action buttons — quote job.id in onclick to keep it a string (C1)
+      const materialState = hasMaterials ? 'Available — open materials' : 'Not verified — generate materials';
       const generateBtn = hasMaterials
-        ? `<button class="btn btn-sm btn-view" onclick="viewMaterials(${inlineArg(job.id)})">👁 View</button>`
-        : `<button class="btn btn-sm btn-generate" onclick="generateMaterials(${inlineArg(job.id)}, this)">✨ Generate</button>`;
+        ? `<button class="btn btn-sm btn-view" aria-label="View verified materials" onclick="viewMaterials(${inlineArg(job.id)})">👁 View</button>`
+        : `<button class="btn btn-sm btn-generate" aria-label="Generate materials" onclick="generateMaterials(${inlineArg(job.id)}, this)">✨ Generate</button>`;
 
       // Validate URL protocol before rendering as a link (W6)
       const applyLink = isSafeUrl(job.url)
