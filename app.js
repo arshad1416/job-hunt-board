@@ -330,11 +330,8 @@
 
       allJobs = (data.jobs || []).map(j => ({
         ...j,
-        // Extended pipeline statuses (screening/interview/offer/rejected/
-        // ghosted) all imply materials were generated before applying.
-        has_materials: j.status === 'materials_ready' ||
-                       isPostApplied(j.status) ||
-                       j.has_materials === true
+        // Material availability is supplied only by the material API/result; status is not evidence.
+        has_materials: j.has_materials === true
       }));
 
       // Update meta display
