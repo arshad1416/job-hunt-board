@@ -20,7 +20,6 @@ import {
   getMaterialVersion,
   claimMaterial,
   markMaterialSucceeded,
-  enqueueRenderJob,
   markMaterialFailed,
   projectMaterialsReady,
   setCurrentMaterial,
@@ -684,8 +683,6 @@ async function tryReuseMaterials(env, job, jobId) {
       return null;
     }
     leaseToken = null;
-    const materialRow = await getMaterialVersion(env, jobId, version);
-    await enqueueRenderJob(env, { materialVersionId: materialRow?.id, artifactPrefix: staged.resume.replace('/resume.md', '') });
     const currentSet = await setCurrentMaterial(env, jobId, version);
     if (!currentSet) { const current = await getCurrentMaterial(env, jobId); if (!current) return null; version = current.version; }
     await markMaterialsReady(env, jobId, 'materials reused', version);
