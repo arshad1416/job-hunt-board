@@ -975,14 +975,20 @@ export async function onRequestPost(context) {
     }
   }
 
-  const complete = await Promise.all([
+  let complete;
+  let manifestObj;
+  let resumeObj;
+  let coverObj;
+  let detailsObj;
+  try {
+  complete = await Promise.all([
     env.JOB_MATERIALS_BUCKET.head(stagedKeys.resume),
     env.JOB_MATERIALS_BUCKET.head(stagedKeys.coverLetter),
     env.JOB_MATERIALS_BUCKET.head(stagedKeys.details),
     env.JOB_MATERIALS_BUCKET.head(stagedKeys.manifest)
   ]);
-  const manifestObj = await env.JOB_MATERIALS_BUCKET.get(stagedKeys.manifest);
-  const [resumeObj, coverObj, detailsObj] = await Promise.all([env.JOB_MATERIALS_BUCKET.get(stagedKeys.resume), env.JOB_MATERIALS_BUCKET.get(stagedKeys.coverLetter), env.JOB_MATERIALS_BUCKET.get(stagedKeys.details)]);
+  manifestObj = await env.JOB_MATERIALS_BUCKET.get(stagedKeys.manifest);
+  [resumeObj, coverObj, detailsObj] = await Promise.all([env.JOB_MATERIALS_BUCKET.get(stagedKeys.resume), env.JOB_MATERIALS_BUCKET.get(stagedKeys.coverLetter), env.JOB_MATERIALS_BUCKET.get(stagedKeys.details)]);
   let parsedManifest = null;
   try { parsedManifest = manifestObj ? JSON.parse(await manifestObj.text()) : null; } catch {}
   const sourceSetExists = isCompleteSourceSet({ resume: resumeObj, coverLetter: coverObj, details: detailsObj, manifest: manifestObj });
@@ -990,6 +996,10 @@ export async function onRequestPost(context) {
   if (!sourceSetExists || !hashesValid) {
     await markMaterialFailed(env, { jobId, version: materialVersion, leaseToken: materialLeaseToken, errorCode: 'source_incomplete', errorMessage: 'Versioned source objects are incomplete after write' });
     return json({ error: 'Stored materials are incomplete' }, 500);
+  }
+  } catch (err) {
+    await markMaterialFailed(env, { jobId, version: materialVersion, leaseToken: materialLeaseToken, errorCode: 'verification_failed', errorMessage: err.message });
+    return json({ error: 'Stored materials could not be verified' }, 500);
   }
   const recorded = await markMaterialSucceeded(env, {
     jobId,
