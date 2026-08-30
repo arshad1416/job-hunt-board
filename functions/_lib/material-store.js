@@ -55,8 +55,12 @@ async function markMaterialSucceeded(env, { jobId, version, leaseToken, artifact
     "UPDATE material_versions SET state='succeeded', source_exists=1, hard_gates_pass=1, artifact_prefix=?, lease_token=NULL, lease_expires_at=NULL, completed_at=datetime('now'), updated_at=datetime('now') WHERE job_id=? AND version=? AND state='claimed' AND lease_token=? AND lease_expires_at > datetime('now')",
     [artifactPrefix || null, jobId, version, leaseToken]);
   const ok = Number(result.affectedRowCount) === 1;
-  if (ok) await enqueueRenderJob(env, { materialVersionId: (await getMaterialVersion(env, jobId, version))?.id, artifactPrefix });
-  return ok;
+  if (!ok) return false;
+  try { await enqueueRenderJob(env, { materialVersionId: (await getMaterialVersion(env, jobId, version))?.id, artifactPrefix }); } catch {
+    await tursoExecute(env, "UPDATE material_versions SET state='failed', source_exists=0, hard_gates_pass=0, error_code='render_enqueue_failed', lease_token=NULL, lease_expires_at=NULL, updated_at=datetime('now') WHERE job_id=? AND version=? AND state='succeeded' AND artifact_prefix=?", [jobId, version, artifactPrefix]);
+    return false;
+  }
+  return true;
 }
 
 async function markMaterialFailed(env, { jobId, version, leaseToken, errorCode = 'material_failed', errorMessage }) {
