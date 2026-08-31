@@ -25,7 +25,7 @@ const DEFAULT_ALLOWED_ORIGINS = [
 const PUBLIC_PATHS = ['/api/health'];
 
 /** GET /api/materials/<numeric job_id>/<filename> */
-const MATERIALS_PATH = /^\/api\/materials\/(\d+)\/([A-Za-z0-9._-]+)$/;
+const MATERIALS_PATH = /^\/api\/materials\/(\d+)(?:\/versions\/([a-f0-9]{64})|)\/([A-Za-z0-9._-]+)$/i;
 
 function allowedOrigins(env) {
   const raw = (env.ALLOWED_ORIGINS || '').trim();
@@ -79,8 +79,9 @@ async function authorize(request, env, url, method, cors) {
       const ok = await verifyMaterialsToken(
         env,
         match[1],
-        match[2],
-        url.searchParams.get('token')
+        match[3],
+        url.searchParams.get('token'),
+        match[2] || null
       );
       if (ok) return null;
     }
@@ -118,8 +119,18 @@ export async function onRequest(context) {
 
 /** Helper: JSON response carrying CORS headers */
 function json(obj, status, cors) {
+  // Private API errors are never cacheable or content-sniffable.
+  const securityHeaders = {
+    'Cache-Control': 'no-store',
+    'X-Content-Type-Options': 'nosniff'
+  };
   return new Response(JSON.stringify(obj), {
     status,
-    headers: { 'Content-Type': 'application/json', ...cors, Vary: 'Origin' }
+    headers: {
+      'Content-Type': 'application/json',
+      ...securityHeaders,
+      ...cors,
+      Vary: 'Origin'
+    }
   });
 }

@@ -1,0 +1,7 @@
+-- Additive column contract; apply with scripts/upgrade-material-schema.mjs --commit.
+-- ALTER TABLE render_jobs ADD COLUMN retry_at TEXT;
+-- ALTER TABLE render_jobs ADD COLUMN source_artifact_prefix TEXT;
+-- ALTER TABLE render_jobs ADD COLUMN resume_pdf_sha256 TEXT;
+-- ALTER TABLE render_jobs ADD COLUMN cover_letter_pdf_sha256 TEXT;
+-- ALTER TABLE render_jobs ADD COLUMN resume_pdf_bytes INTEGER;
+-- ALTER TABLE render_jobs ADD COLUMN cover_letter_pdf_bytes INTEGER;

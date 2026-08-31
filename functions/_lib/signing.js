@@ -15,7 +15,8 @@ const TOKEN_VERSION = 'v1';
 const DEFAULT_TTL_SECONDS = 900; // 15 minutes
 
 /** Files the dashboard can be handed links for. */
-const MATERIAL_FILES = ['resume.md', 'cover_letter.md', 'job_details.json'];
+const MATERIAL_FILES = ['resume.md', 'cover_letter.md', 'job_details.json', 'resume.pdf', 'cover_letter.pdf'];
+const MATERIAL_ROUTE = '/api/materials';
 
 const encoder = new TextEncoder();
 
@@ -59,13 +60,13 @@ function timingSafeEqual(a, b) {
  * Mint a signed token for one (job_id, filename) pair.
  * @returns {Promise<string>} token to pass as ?token=
  */
-async function signMaterialsToken(env, jobId, filename, ttlSeconds = DEFAULT_TTL_SECONDS) {
+async function signMaterialsToken(env, jobId, filename, ttlSeconds = DEFAULT_TTL_SECONDS, materialVersion = null) {
   const secret = signingSecret(env);
   if (!secret) {
     throw new Error('No signing secret configured (MATERIALS_SIGNING_KEY or DASHBOARD_AUTH_TOKEN)');
   }
   const exp = Math.floor(Date.now() / 1000) + ttlSeconds;
-  const sig = await hmac(secret, `${TOKEN_VERSION}:${jobId}:${filename}:${exp}`);
+  const sig = await hmac(secret, `${TOKEN_VERSION}:${jobId}:${materialVersion || '-'}:${filename}:${exp}`);
   return `${TOKEN_VERSION}.${exp}.${sig}`;
 }
 
@@ -74,7 +75,7 @@ async function signMaterialsToken(env, jobId, filename, ttlSeconds = DEFAULT_TTL
  * A token minted for job 41 will not open job 42, and expires on its own.
  * @returns {Promise<boolean>}
  */
-async function verifyMaterialsToken(env, jobId, filename, token) {
+async function verifyMaterialsToken(env, jobId, filename, token, materialVersion = null) {
   const secret = signingSecret(env);
   if (!secret || !token) return false;
 
@@ -88,7 +89,7 @@ async function verifyMaterialsToken(env, jobId, filename, token) {
   const exp = parseInt(expRaw, 10);
   if (Math.floor(Date.now() / 1000) >= exp) return false;
 
-  const expected = await hmac(secret, `${TOKEN_VERSION}:${jobId}:${filename}:${exp}`);
+  const expected = await hmac(secret, `${TOKEN_VERSION}:${jobId}:${materialVersion || '-'}:${filename}:${exp}`);
   return timingSafeEqual(sig, expected);
 }
 
@@ -96,14 +97,13 @@ async function verifyMaterialsToken(env, jobId, filename, token) {
  * Build the full set of signed material URLs for one job.
  * @returns {Promise<{resume: string, cover_letter: string, job_details: string}>}
  */
-async function signedMaterialUrls(env, jobId, ttlSeconds = DEFAULT_TTL_SECONDS) {
-  const [resume, cover, details] = await Promise.all(
-    MATERIAL_FILES.map(f => signMaterialsToken(env, jobId, f, ttlSeconds))
-  );
+async function signedMaterialUrls(env, jobId, ttlSeconds = DEFAULT_TTL_SECONDS, materialVersion = null, includePdf = true) {
+  const prefix = materialVersion ? `/api/materials/${jobId}/versions/${materialVersion}` : `/api/materials/${jobId}`;
+  const [resume, cover, details, resumePdf, coverPdf] = await Promise.all((includePdf ? MATERIAL_FILES : MATERIAL_FILES.slice(0, 3)).map(f => signMaterialsToken(env, jobId, f, ttlSeconds, materialVersion)));
   return {
-    resume: `/api/materials/${jobId}/resume.md?token=${resume}`,
-    cover_letter: `/api/materials/${jobId}/cover_letter.md?token=${cover}`,
-    job_details: `/api/materials/${jobId}/job_details.json?token=${details}`
+    resume: `${prefix}/resume.md?token=${resume}`,
+    cover_letter: `${prefix}/cover_letter.md?token=${cover}`,
+    job_details: `${prefix}/job_details.json?token=${details}`, ...(includePdf ? { resume_pdf: `${prefix}/resume.pdf?token=${resumePdf}`, cover_letter_pdf: `${prefix}/cover_letter.pdf?token=${coverPdf}` } : {})
   };
 }
 

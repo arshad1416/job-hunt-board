@@ -9,6 +9,7 @@
    ═══════════════════════════════════════════════════════════════ */
 
 import { signedMaterialUrls, DEFAULT_TTL_SECONDS } from '../_lib/signing.js';
+import { getCurrentMaterial, getMaterialPdfState } from '../_lib/material-store.js';
 
 export async function onRequestPost(context) {
   const { request, env } = context;
@@ -30,7 +31,14 @@ export async function onRequestPost(context) {
 
   let materials;
   try {
-    materials = await signedMaterialUrls(env, String(jobId));
+    const current = await getCurrentMaterial(env, String(jobId));
+    if (!current) return json({ error: 'Verified materials are not available' }, 404);
+    const pdf = await getMaterialPdfState(env, String(jobId), current, env.JOB_MATERIALS_BUCKET);
+    materials = await signedMaterialUrls(env, String(jobId), DEFAULT_TTL_SECONDS, current.version, pdf.ready);
+    materials.pdf_state = pdf.state;
+    materials.pdf_ready = Boolean(pdf.ready);
+    materials.pdf_error = pdf.state === 'failed' ? 'PDF rendering failed' : null;
+    if (!pdf.ready) { delete materials.resume_pdf; delete materials.cover_letter_pdf; }
   } catch (err) {
     console.error('Signing error:', err);
     return json({ error: 'Server signing key not configured' }, 503);
@@ -48,6 +56,6 @@ export async function onRequestPost(context) {
 function json(obj, status = 200) {
   return new Response(JSON.stringify(obj), {
     status,
-    headers: { 'Content-Type': 'application/json' }
+    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'X-Robots-Tag': 'noindex, nofollow' }
   });
 }

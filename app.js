@@ -14,7 +14,9 @@
     track: 'all',
     minScore: 0,
     status: 'all',
-    search: ''
+    search: '',
+    urgency: 'all',
+    indicator: 'all'
   };
 
   // ── DOM refs ───────────────────────────────────────────────────
@@ -223,15 +225,21 @@
   }
 
   /** Urgency / repost / gate indicators — absent fields render nothing. */
+  function isTrueFlag(value) {
+    return value === true || value === 1 || (typeof value === 'string' && ['1', 'true'].includes(value.trim().toLowerCase()));
+  }
+
   function indicatorsHtml(job) {
     const parts = [];
+    if (job.knockout_reason) {
+      parts.push('<span class="knockout-badge" role="status" title="Explicit job evidence">⚠ ' + escapeHtml(String(job.knockout_reason).slice(0, 40)) + '</span>');
+    }
     const u = String(job.urgency || '').trim().toLowerCase();
     if (u === 'high' || u === 'medium') {
       parts.push('<span class="indicator indicator-urgency-' + u + '" title="Urgency: ' + u + '">' +
         (u === 'high' ? '🔥 High urgency' : '⚡ Medium urgency') + '</span>');
     }
-    const repost = job.is_repost === true || job.is_repost === 1 ||
-                   job.is_repost === 'true' || job.is_repost === '1';
+    const repost = isTrueFlag(job.is_repost ?? job.repost);
     if (repost) {
       parts.push('<span class="indicator indicator-repost" title="Reposted listing">♻ Repost</span>');
     }
@@ -285,8 +293,19 @@
     $('modal-status').style.display = 'block';
     document.querySelector('.modal-spinner-wrap').style.display = 'flex';
     $('modal-result').style.display = 'none';
+    setPdfLinks({ pdf_state: 'pending', pdf_ready: false });
     $('modal-error').style.display = 'none';
     showModal('generate-modal');
+  }
+
+  function setPdfLinks(materials = {}) {
+    const ready = materials.pdf_ready === true && materials.pdf_state === 'available' && Boolean(materials.resume_pdf && materials.cover_letter_pdf);
+    const status = $('pdf-status');
+    if (status) status.textContent = ready ? 'PDFs available' : materials.pdf_state === 'failed' ? 'PDF render failed; retry generation.' : 'PDFs pending; refresh later.';
+    for (const [id, url] of [['link-resume-pdf', ready ? materials.resume_pdf : null], ['link-cover-pdf', ready ? materials.cover_letter_pdf : null]]) {
+      const link = $(id); if (!link) continue; link.hidden = !url; link.toggleAttribute('aria-disabled', !url);
+      if (url) link.href = url; else link.removeAttribute('href');
+    }
   }
 
   function showGenerateResult(materials, quality, jobId) {
@@ -295,6 +314,7 @@
     $('modal-title').textContent = 'Materials Ready!';
     $('link-resume').href = materials.resume;
     $('link-cover').href = materials.cover_letter;
+    setPdfLinks(materials);
     lastGeneratedJobId = String(jobId);
     const q = quality || {};
     $('quality-summary').textContent = 'ATS ' + (q.ats_score ?? '—') + '/100 · ' +
@@ -318,7 +338,9 @@
   // ═══════════════════════════════════════════════════════════════
   // DATA LOADING
   // ═══════════════════════════════════════════════════════════════
+  let loadGeneration = 0;
   async function loadJobs() {
+    const generation = ++loadGeneration;
     loadingState.style.display = 'block';
     emptyState.style.display = 'none';
     tbody.innerHTML = '';
@@ -327,32 +349,62 @@
       const res = await fetch('/data/jobs.json?_=' + Date.now());
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const data = await res.json();
+      if (generation !== loadGeneration) return;
+      if (!data || !Array.isArray(data.jobs)) throw new Error('Invalid job data');
 
-      allJobs = (data.jobs || []).map(j => ({
+      const snapshotJobs = data.jobs.filter(j => j && typeof j === 'object').map(j => ({
         ...j,
-        // Extended pipeline statuses (screening/interview/offer/rejected/
-        // ghosted) all imply materials were generated before applying.
-        has_materials: j.status === 'materials_ready' ||
-                       isPostApplied(j.status) ||
-                       j.has_materials === true
+        // Material availability is supplied only by the material API/result; status is not evidence.
+        has_materials: j.has_materials === true
       }));
 
+      // Reconcile live Turso statuses when authenticated; stale snapshot remains a safe fallback.
+      let mergedJobs = snapshotJobs;
+      if (getToken() && snapshotJobs.length) {
+        try {
+          const ids = snapshotJobs.map(j => j.id).filter(id => /^\d+$/.test(String(id))).slice(0, 100);
+          const live = await fetch('/api/jobs/statuses?ids=' + encodeURIComponent(ids.join(',')), { headers: authHeaders() });
+          // Generation guard: stale live responses must not enter processing.
+          if (generation !== loadGeneration) return;
+          if (live.ok) {
+            const liveData = await live.json();
+            if (!liveData || !Array.isArray(liveData.statuses)) throw new Error('Invalid live status data');
+            if (generation !== loadGeneration) return;
+            const liveById = new Map(liveData.statuses.filter(s => s && /^\d+$/.test(String(s.id))).map(s => [String(s.id), s]));
+            if (generation !== loadGeneration) return;
+            mergedJobs = snapshotJobs.map(j => liveById.has(String(j.id)) ? { ...j, ...liveById.get(String(j.id)) } : j);
+          }
+        } catch (error) {
+          if (generation !== loadGeneration) return;
+          console.warn('live status reconciliation unavailable:', error);
+        }
+      }
+
+      // Re-check after the complete live reconciliation boundary.
+      if (generation !== loadGeneration) return;
+      allJobs = mergedJobs;
+
+      // Never let an older refresh commit metadata after a newer one starts.
+      if (generation !== loadGeneration) return;
       // Update meta display
       if (data.meta) {
         $('last-updated').textContent = data.meta.updated || data.meta.generated_at || '—';
       }
 
+      if (generation !== loadGeneration) return;
       applyFilters();
       updateStats();
       showToast('Loaded ' + allJobs.length + ' jobs', 'success', 2000);
     } catch (err) {
+      if (generation !== loadGeneration) return;
+      if (generation !== loadGeneration) return;
       console.error('loadJobs error:', err);
       showToast('Failed to load jobs: ' + err.message, 'error');
       emptyState.style.display = 'block';
       $('empty-text').textContent = 'Could not load job data.';
       $('empty-hint').textContent = 'Check that data/jobs.json exists and is valid.';
     } finally {
-      loadingState.style.display = 'none';
+      if (generation === loadGeneration) loadingState.style.display = 'none';
     }
   }
 
@@ -365,6 +417,10 @@
     filteredJobs = allJobs.filter(job => {
       // Track filter
       if (filters.track !== 'all' && job.track !== filters.track) return false;
+      if (filters.urgency !== 'all' && String(job.urgency || '').toLowerCase() !== filters.urgency) return false;
+      if (filters.indicator === 'repost' && !isTrueFlag(job.is_repost ?? job.repost)) return false;
+      if (filters.indicator === 'gate' && !(job.gate || '').trim()) return false;
+      if (filters.indicator === 'knockout' && !(job.knockout_reason || '').trim()) return false;
 
       // Min score filter
       if (filters.minScore > 0 && (job.score || 0) < filters.minScore) return false;
@@ -373,7 +429,11 @@
       // meaning (applied + extended post-application statuses) so old
       // filters keep behaving; the extended options match exactly.
       if (filters.status !== 'all') {
-        if (filters.status === 'not_applied') {
+        if (filters.status === 'expired') {
+          if (String(job.deadline_status || '').toLowerCase() !== 'expired') return false;
+        } else if (filters.status === 'closing_soon') {
+          if (!['closing_soon', 'soon'].includes(String(job.deadline_status || '').toLowerCase())) return false;
+        } else if (filters.status === 'not_applied') {
           if (isPostApplied(job.status)) return false;
         } else if (filters.status === 'applied') {
           const s = normalizeStatus(job.status);
@@ -437,9 +497,11 @@
       const hasMaterials = job.has_materials;
 
       // Action buttons — quote job.id in onclick to keep it a string (C1)
+      const pdfState = job.pdf_state || (hasMaterials ? 'pending' : 'pending');
+      const materialState = pdfState === 'available' ? 'PDFs available' : pdfState === 'failed' ? 'PDF render failed' : hasMaterials ? 'PDFs pending' : 'Not verified — generate materials';
       const generateBtn = hasMaterials
-        ? `<button class="btn btn-sm btn-view" onclick="viewMaterials(${inlineArg(job.id)})">👁 View</button>`
-        : `<button class="btn btn-sm btn-generate" onclick="generateMaterials(${inlineArg(job.id)}, this)">✨ Generate</button>`;
+        ? `<button class="btn btn-sm btn-view" aria-label="View verified Markdown materials" onclick="viewMaterials(${inlineArg(job.id)})">👁 View</button>`
+        : `<button class="btn btn-sm btn-generate" aria-label="Generate materials" onclick="generateMaterials(${inlineArg(job.id)}, this)">✨ Generate</button>`;
 
       // Validate URL protocol before rendering as a link (W6)
       const applyLink = isSafeUrl(job.url)
@@ -480,6 +542,7 @@
           <td>
             <div class="actions-cell">
               ${applyLink}
+              <span class="material-state" role="status" aria-live="polite">${materialState}</span>
               ${generateBtn}
               ${FOLLOW_UP_ELIGIBLE.has(normalizeStatus(job.status)) ? '<button class="btn btn-sm btn-outline" onclick="draftFollowup(' + inlineArg(job.id) + ')">✍ Follow-up</button>' : ''}
             </div>
@@ -718,9 +781,12 @@
       if (!res.ok) {
         throw new Error(data.error || 'Could not sign material links (HTTP ' + res.status + ')');
       }
+      setPdfLinks(data.materials);
 
-      if (resumeTab) resumeTab.location.href = data.materials.resume;
-      if (coverTab) coverTab.location.href = data.materials.cover_letter;
+      if (resumeTab && data.materials.resume) resumeTab.location.href = data.materials.resume; else if (resumeTab) resumeTab.close();
+      if (coverTab && data.materials.cover_letter) coverTab.location.href = data.materials.cover_letter; else if (coverTab) coverTab.close();
+      // PDF links are intentionally omitted until the API reports available.
+      // PDF controls remain hidden unless the API returns signed URLs.
     } catch (err) {
       console.error('viewMaterials error:', err);
       if (resumeTab) resumeTab.close();
@@ -837,6 +903,9 @@
       applyFilters();
     });
 
+    $('urgency-filter').addEventListener('change', e => { filters.urgency = e.target.value; applyFilters(); });
+    $('indicator-filter').addEventListener('change', e => { filters.indicator = e.target.value; applyFilters(); });
+
     // Search box (debounced)
     let searchTimer;
     $('search-box').addEventListener('input', (e) => {
@@ -853,12 +922,15 @@
       filters.minScore = 0;
       filters.status = 'all';
       filters.search = '';
+      filters.urgency = 'all'; filters.indicator = 'all';
 
       document.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
       document.querySelector('.seg-btn[data-track="all"]').classList.add('active');
       $('min-score').value = 0;
       $('min-score-val').textContent = '0';
       $('status-filter').value = 'all';
+      if ($('urgency-filter')) $('urgency-filter').value = 'all';
+      if ($('indicator-filter')) $('indicator-filter').value = 'all';
       $('search-box').value = '';
 
       applyFilters();

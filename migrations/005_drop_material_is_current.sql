@@ -1,0 +1,2 @@
+-- material_current is canonical; retain legacy column on existing installations for compatibility.
+-- Fresh schema no longer defines or indexes is_current.

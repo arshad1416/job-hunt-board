@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { runPreflight } from '../scripts/preflight.mjs';
+import { spawnSync } from 'node:child_process';
+const base = { ...process.env };
+const configured = { ...base, TURSO_URL:'https://example.test', TURSO_TOKEN:'secret', NINEROUTER_API_KEY:'secret', DASHBOARD_AUTH_TOKEN:'secret', JOB_MATERIALS_BUCKET:'bucket' };
+const commands = () => true;
+test('preflight reports env and command checks without values', () => { const r = runPreflight(configured, commands); assert.equal(r.ok, true); assert.deepEqual(r.commands, {node:true,pdftotext:true}); });
+test('preflight preserves inherited env and allows explicit deletion', () => { const env = { ...base }; for (const key of ['TURSO_URL','TURSO_TOKEN','NINEROUTER_API_KEY','DASHBOARD_AUTH_TOKEN','JOB_MATERIALS_BUCKET']) delete env[key]; const r = runPreflight(env, commands); assert.equal(r.ok, false); });
+test('CLI JSON redacts secret values', () => { const r = spawnSync(process.execPath, ['scripts/preflight.mjs','--json'], { env: { ...configured }, encoding:'utf8' }); assert.doesNotMatch(r.stdout, /secret/); });

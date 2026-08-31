@@ -1,0 +1,2 @@
+import test from 'node:test'; import assert from 'node:assert/strict'; import { readFile } from 'node:fs/promises';
+test('render upgrade contains worker columns',async()=>{const s=await readFile(new URL('../migrations/007_render_job_columns.sql',import.meta.url),'utf8'); for(const c of ['retry_at','source_artifact_prefix','resume_pdf_sha256','cover_letter_pdf_sha256','resume_pdf_bytes','cover_letter_pdf_bytes']) assert.match(s,new RegExp('ADD COLUMN '+c));});

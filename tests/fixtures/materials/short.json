@@ -1,0 +1,12 @@
+{
+  "name": "Alex & Example",
+  "email": "alex@example.test",
+  "phone": "555-0100",
+  "location": "Toronto",
+  "resume": {
+    "markdown": "# Experience\n\n**Engineer**\n- Built systems"
+  },
+  "cover": {
+    "markdown": "Hello,\n\nI am excited to apply."
+  }
+}
