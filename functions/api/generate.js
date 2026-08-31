@@ -236,7 +236,7 @@ async function loadCandidateMaterials(env, track) {
     let selected; try { selected = JSON.parse(await pointer.text()); } catch { return null; }
     const selectedProfileKey = selected?.profile_key;
     const selectedReferenceKey = selected?.reference_key;
-    if (!selectedReferenceKey || !selected?.reference_keys?.includes(selectedReferenceKey)) return null;
+    if (!selectedReferenceKey || !selected?.reference_keys?.includes(selectedReferenceKey) || !/^assets\/master_resume_(ev|ai)\.md$/.test(selectedReferenceKey) || (track === 'ai_engineering' && selectedReferenceKey !== 'assets/master_resume_ai.md') || (track !== 'ai_engineering' && selectedReferenceKey !== 'assets/master_resume_ev.md')) return null;
     if (!validateProfileManifest(selected) || selectedProfileKey !== profileKey(selected.revision) || selected.bytes <= 0 || selected.object_hashes?.profile === undefined) return null;
     const [profileObj, referenceObj] = await Promise.all([
       env.JOB_MATERIALS_BUCKET.get(selectedProfileKey), env.JOB_MATERIALS_BUCKET.get(selectedReferenceKey)
