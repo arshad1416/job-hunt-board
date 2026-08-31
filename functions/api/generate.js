@@ -41,6 +41,7 @@ import { isSafePublicHttpUrl } from '../_lib/job-url.mjs';
 import { MISSION, RESUME_STANDARDS, COVER_LETTER_STANDARDS, PROFILE_KEY, trackReferenceKey } from '../_lib/job-hunter-skill.js';
 import { validateProfileManifest, profileKey, PROFILE_MANIFEST_POINTER } from '../_lib/profile-manifest.js';
 import { jaccard, tokenize } from '../_lib/cv-gates.js';
+import { pipelineStage } from '../_lib/pipeline-log.js';
 import {
   buildQualityReport,
   REUSE_SIMILARITY_THRESHOLD,
@@ -721,9 +722,12 @@ async function runGenerate(context) {
   }
 
   const jobId = body.job_id;
+  const logStage = pipelineStage('generate', { job_id: String(jobId ?? '') });
   if (jobId === undefined || jobId === null || !/^\d+$/.test(String(jobId))) {
     return json({ error: 'Missing or invalid required field: job_id' }, 400);
   }
+
+  logStage({ status: 'parsed' });
 
   // ── 2. Fetch full job from Turso ──
   let job;
@@ -740,8 +744,10 @@ async function runGenerate(context) {
   }
 
   if (!job) {
+    logStage({ status: 'job_not_found' });
     return json({ error: 'Job not found: ' + jobId }, 404);
   }
+  logStage({ status: 'job_loaded' });
 
   let existingCurrent;
   try {
@@ -812,6 +818,7 @@ async function runGenerate(context) {
   // runs after it. A hit short-circuits generation entirely. A miss never
   // mutates the application status.
   const reused = await tryReuseMaterials(env, job, jobId);
+  logStage({ status: reused ? 'reused' : 'reuse_missed', reused: !!reused, jd_source: jdSource });
   if (reused) {
     return json({
       success: true,
@@ -864,6 +871,8 @@ async function runGenerate(context) {
       materialLeaseToken = null;
       return json({ error: 'Candidate profile is not configured' }, 503);
     }
+    logStage({ status: 'llm_started', version: materialVersion });
+    logStage({ status: 'llm_started', version: materialVersion });
     [resumeMd, coverMd] = await Promise.all([
       callLLM(env.NINEROUTER_API_KEY, resumePrompt(job, materials)),
       callLLM(env.NINEROUTER_API_KEY, coverLetterPrompt(job, materials))
@@ -1046,6 +1055,7 @@ async function runGenerate(context) {
   await markMaterialsReady(env, jobId, 'materials generated', materialVersion);
 
   // ── 7. Return success (short-lived signed links) ──
+  logStage({ status: 'completed', version: materialVersion, jd_source: jdSource });
   return json({
     success: true,
     job_id: jobId,
