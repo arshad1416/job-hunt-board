@@ -16,8 +16,10 @@ export async function intakeProfile(input,{confirm=false,bucket,readFile=fs.prom
  if(!confirm)return redactedLog({status:'dry-run',type:manifest.source_type,bytes:manifest.bytes,revision:manifest.revision});
  if(!bucket)throw new Error('private profile bucket is required');
  const pkey=manifest.profile_key; const profile=await writeIfNew(bucket,pkey,content,{confirm:true});
- const pointer=JSON.stringify({...manifest,profile_key:pkey}); const current=await writeIfNew(bucket,keys.current_key||PROFILE_MANIFEST_POINTER,pointer,{confirm:true});
- return redactedLog({status:profile.status==='written'||current.status==='written'?'written':'unchanged',type:manifest.source_type,bytes:manifest.bytes,revision:manifest.revision});
+ const pointer=JSON.stringify({...manifest,profile_key:pkey});
+ // Revision objects are immutable; only the private selector is updated.
+ await bucket.put(keys.current_key||PROFILE_MANIFEST_POINTER,pointer,{httpMetadata:{contentType:'application/json'}});
+ return redactedLog({status:profile.status==='written'?'written':'unchanged',type:manifest.source_type,bytes:manifest.bytes,revision:manifest.revision});
 }
 export const previewProfile=(input,options={})=>intakeProfile(input,{...options,confirm:false});
 if(import.meta.url===`file://${process.argv[1]}`){const path=process.argv.find(x=>!x.startsWith('--')&&x!==process.argv[1]);if(!path){console.error('usage: intake-profile.mjs FILE [--confirm]');process.exit(2)}intakeProfile(path,{confirm:process.argv.includes('--confirm')}).then(x=>console.log(JSON.stringify(x))).catch(e=>{console.error(e.message);process.exit(1)})}
