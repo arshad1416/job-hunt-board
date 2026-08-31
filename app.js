@@ -385,7 +385,7 @@
       $('empty-text').textContent = 'Could not load job data.';
       $('empty-hint').textContent = 'Check that data/jobs.json exists and is valid.';
     } finally {
-      loadingState.style.display = 'none';
+      if (loadSequence === jobsLoadSequence) loadingState.style.display = 'none';
     }
   }
 
