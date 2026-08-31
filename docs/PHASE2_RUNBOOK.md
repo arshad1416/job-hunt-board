@@ -17,7 +17,7 @@ default** and needs an explicit `--commit` or `--confirm`.
 
 ---
 
-## Operations: renderer health and recovery
+## Operations: renderer health and recovery (Task 7)
 
 Task 7 operations are deployment-specific: no timer unit is claimed here. Identify the actual schedule with `crontab -l`, `systemctl list-timers --all`, then `systemctl cat <unit>`; inspect the real checkout with `pwd` and run commands only from that verified cwd (never assume `~/job-hunt-board`). Use HTTP v2 Turso via `TURSO_URL` and `TURSO_TOKEN="$(cat ~/.hermes/turso_token.txt)"`; no Turso CLI and never print secret values. Do not overlap the 9AM ingestion run. From the verified repository root: `node scripts/health-report.mjs --self-test`; configured live report: `TURSO_URL=... TURSO_TOKEN=... node scripts/health-report.mjs`; offline fixture: `node scripts/health-report.mjs --input report.json`. Generation and JD-source telemetry are explicitly unavailable until a future additive migration.
 
