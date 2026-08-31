@@ -14,7 +14,9 @@
     track: 'all',
     minScore: 0,
     status: 'all',
-    search: ''
+    search: '',
+    urgency: 'all',
+    indicator: 'all'
   };
 
   // ── DOM refs ───────────────────────────────────────────────────
@@ -389,6 +391,10 @@
     filteredJobs = allJobs.filter(job => {
       // Track filter
       if (filters.track !== 'all' && job.track !== filters.track) return false;
+      if (filters.urgency !== 'all' && String(job.urgency || '').toLowerCase() !== filters.urgency) return false;
+      if (filters.indicator === 'repost' && !job.is_repost) return false;
+      if (filters.indicator === 'gate' && !(job.gate || '').trim()) return false;
+      if (filters.indicator === 'knockout' && !(job.knockout_reason || '').trim()) return false;
 
       // Min score filter
       if (filters.minScore > 0 && (job.score || 0) < filters.minScore) return false;
@@ -871,6 +877,9 @@
       applyFilters();
     });
 
+    $('urgency-filter').addEventListener('change', e => { filters.urgency = e.target.value; applyFilters(); });
+    $('indicator-filter').addEventListener('change', e => { filters.indicator = e.target.value; applyFilters(); });
+
     // Search box (debounced)
     let searchTimer;
     $('search-box').addEventListener('input', (e) => {
@@ -887,12 +896,15 @@
       filters.minScore = 0;
       filters.status = 'all';
       filters.search = '';
+      filters.urgency = 'all'; filters.indicator = 'all';
 
       document.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
       document.querySelector('.seg-btn[data-track="all"]').classList.add('active');
       $('min-score').value = 0;
       $('min-score-val').textContent = '0';
       $('status-filter').value = 'all';
+      if ($('urgency-filter')) $('urgency-filter').value = 'all';
+      if ($('indicator-filter')) $('indicator-filter').value = 'all';
       $('search-box').value = '';
 
       applyFilters();

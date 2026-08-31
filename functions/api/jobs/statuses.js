@@ -12,7 +12,7 @@ export async function onRequestGet({ request, env }) {
   if (!raw) return json({ error: 'ids is required' }, 400);
   const parts = raw.split(',').map(x => x.trim());
   const ids = [...new Set(parts.filter(x => /^\d+$/.test(x)).map(Number))];
-  if (!ids.length || parts.length > MAX_IDS || parts.some(x => !/^\d+$/.test(x)) || raw.length > 2000) return json({ error: 'ids must contain 1-100 numeric IDs' }, 400);
+  if (!ids.length || parts.length > MAX_IDS || parts.some(x => !/^\d+$/.test(x)) || ids.some(x => x > 2147483647) || raw.length > 2000) return json({ error: 'ids must contain 1-100 numeric IDs' }, 400);
   const status = q.get('status');
   if (status && !normalizeStatus(status)) return json({ error: 'invalid status' }, 400);
   const placeholders = ids.map(() => '?').join(',');

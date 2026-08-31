@@ -1,4 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { assessKnockout } from '../functions/_lib/knockout.js';
-test('only explicit signals knock out', () => { assert.equal(assessKnockout('This role may close soon.').eligible, true); assert.equal(assessKnockout('Position is closed.').reason, 'role closed'); assert.deepEqual(assessKnockout(''), { eligible: true, reason: null, signal: null }); });
+import { assessKnockout, MAX_TEXT } from '../functions/_lib/knockout.js';
+test('missing and ambiguous text never rejects', () => { assert.deepEqual(assessKnockout(''), { eligible:true, warning:null, reason:null }); assert.equal(assessKnockout('may close soon; authorization preferred').eligible, true); });
+test('explicit signals produce capped deterministic warnings only', () => { const r=assessKnockout('Position is closed'); assert.deepEqual(r,{eligible:true,warning:'role closed',reason:'role closed'}); assert.equal(assessKnockout('x'.repeat(MAX_TEXT+100)).eligible,true); });
