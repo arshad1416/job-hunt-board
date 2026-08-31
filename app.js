@@ -364,6 +364,7 @@
         try {
           const ids = snapshotJobs.map(j => j.id).filter(id => /^\d+$/.test(String(id))).slice(0, 100);
           const live = await fetch('/api/jobs/statuses?ids=' + encodeURIComponent(ids.join(',')), { headers: authHeaders() });
+          // Generation guard: stale live responses must not enter processing.
           if (generation !== loadGeneration) return;
           if (live.ok) {
             const liveData = await live.json();
