@@ -550,10 +550,10 @@ async function runRepair(env, job, materials, resumeMd, coverMd, report, sources
  */
 async function tryReuseMaterials(env, job, jobId) {
   if (!env.JOB_MATERIALS_BUCKET) return null;
-  let version = null;
-  let leaseToken = null;
   const materials = await loadCandidateMaterials(env, job.track);
   if (!materials?.profileRevision) return null;
+  let version = null;
+  let leaseToken = null;
   try {
     const rows = await tursoQuery(
       env,
@@ -573,7 +573,7 @@ async function tryReuseMaterials(env, job, jobId) {
     const reuseJd = jobDescriptionText(job) || '';
     version = await versionFor({
       normalizedJd: reuseJd,
-      profileRevision: reuseProfile.profileRevision,
+      profileRevision: materials.profileRevision,
       templateRevision: 'source-v1',
       rendererRevision: 'source-v1'
     });
@@ -827,14 +827,14 @@ export async function onRequestPost(context) {
   try {
     materialVersion = await versionFor({
       normalizedJd: jobDescriptionText(job) || '',
-      profileRevision: reuseProfile.profileRevision,
+      profileRevision: materials.profileRevision,
       templateRevision: 'source-v1',
       rendererRevision: 'source-v1'
     });
     await ensureMaterialVersion(env, {
       jobId,
       version: materialVersion,
-      profileRevision: reuseProfile.profileRevision,
+      profileRevision: materials.profileRevision,
       templateRevision: 'source-v1',
       rendererRevision: 'source-v1'
     });

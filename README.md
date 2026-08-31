@@ -124,6 +124,10 @@ If `DASHBOARD_AUTH_TOKEN` is unset on the server, every non-public route fails c
 
 ---
 
+### Profile intake
+
+`node scripts/intake-profile.mjs FILE --confirm --reference-key assets/master_resume_ev.md` writes only after the selected same-track reference exists in the private bucket and passes size/hash checks. Preview is the default and reports redacted metadata only. Confirmed intake requires `--reference-key`; there is no public or fixed fallback.
+
 ## API Routes
 
 | Method | Path | Auth | Purpose |
