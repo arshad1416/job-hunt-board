@@ -3,6 +3,7 @@ import { normalizeStatus } from '../../_lib/status.js';
 
 const MAX_IDS = 100;
 const MAX_RESPONSE = 64 * 1024;
+// Keep this list limited to columns present in the current applications schema.
 const FIELDS = ['id','status','updated_at','applied_at','follow_up_due','urgency','is_repost','gate'];
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Vary': 'Origin' } });
 
