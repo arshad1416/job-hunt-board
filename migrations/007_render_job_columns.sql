@@ -1,5 +1,4 @@
--- Supported additive upgrade for existing installations (run once in migration order).
--- The migration runner records applied files; do not rerun this file manually.
+-- Additive column contract; apply with scripts/upgrade-material-schema.mjs --commit.
 -- ALTER TABLE render_jobs ADD COLUMN retry_at TEXT;
 -- ALTER TABLE render_jobs ADD COLUMN source_artifact_prefix TEXT;
 -- ALTER TABLE render_jobs ADD COLUMN resume_pdf_sha256 TEXT;
