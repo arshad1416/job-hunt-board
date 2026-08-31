@@ -1,0 +1,4 @@
+const MAX=200000;
+export async function sha256Hex(value){const bytes=new TextEncoder().encode(String(value));return [...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(x=>x.toString(16).padStart(2,'0')).join('')}
+export async function createProfileManifest(profile){if(!profile||typeof profile!=='object')throw new Error('profile_invalid');const contents=JSON.stringify({schema:'profile-v1',name:String(profile.name||''),email:String(profile.email||''),phone:String(profile.phone||''),location:String(profile.location||''),text:String(profile.text||'').slice(0,MAX)});return{schema:'profile-v1',revision:await sha256Hex(contents),content_sha256:await sha256Hex(contents),fields:Object.keys(profile).filter(k=>['name','email','phone','location'].includes(k))}}
+export function validateProfileManifest(m){return Boolean(m&&m.schema==='profile-v1'&&/^[a-f0-9]{64}$/.test(m.revision||'')&&/^[a-f0-9]{64}$/.test(m.content_sha256||''))}

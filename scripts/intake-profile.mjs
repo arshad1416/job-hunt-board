@@ -1,0 +1,3 @@
+#!/usr/bin/env node
+import fs from 'node:fs';import {createProfileManifest} from '../functions/_lib/profile-manifest.js';
+const args=process.argv.slice(2),commit=args.includes('--confirm'),file=args.find(x=>!x.startsWith('--'));if(!file){console.error('usage: node scripts/intake-profile.mjs FILE [--confirm]');process.exitCode=2}else{try{const text=fs.readFileSync(file,'utf8').slice(0,200000),m=await createProfileManifest({text});console.log(JSON.stringify({dry_run:!commit,revision:m.revision}));if(commit)fs.writeFileSync('profile-manifest.json',JSON.stringify(m)+'\n')}catch(e){console.error('profile intake failed');process.exitCode=1}}
