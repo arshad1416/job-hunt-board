@@ -1,7 +1,22 @@
 #!/usr/bin/env node
-import fs from 'node:fs';import {execFileSync} from 'node:child_process';import {extname} from 'node:path';import {validateInput,validateProfile,extractLinkedInExport,createProfileManifest,redactedLog} from '../functions/_lib/profile-manifest.js';
-export function extractInput(file,{runner=execFileSync,reader=fs.readFileSync}={}){const ext=extname(file).toLowerCase();if(ext==='.docx')throw new Error('DOCX intake is deferred');const input=reader(file);validateInput({bytes:input.length,type:ext==='.pdf'?'pdf':'text'});if(ext==='.pdf')return runner('pdftotext',['-layout',file,'-'],{encoding:'utf8'});return input.toString('utf8')}
-export async function previewProfile(file,options={}){const ext=extname(file).toLowerCase();const raw=extractInput(file,options);const linked=ext==='.json'||/linkedin/i.test(raw.slice(0,500));const text=validateProfile(linked?JSON.stringify(extractLinkedInExport(raw)):raw);return {text,sourceType:linked?'linkedin':ext==='.pdf'?'pdf':'text'}}
-export async function intakeProfile(file,{confirm=false,bucket=null,...options}={}){const {text,sourceType}=await previewProfile(file,options);const {sha256Hex,writeIfNew}=await import('../functions/_lib/profile-manifest.js');const profileHash=await sha256Hex(text);const manifest=await createProfileManifest(text,{sourceType,objectHashes:{profile:profileHash},profile_key:'assets/profile/revisions/'+(await (await import('../functions/_lib/profile-manifest.js')).profileRevision(text))+'/profile.json',reference_keys:['assets/master_resume_ev.md','assets/master_resume_ai.md']});if(confirm&&!bucket)throw new Error('private profile bucket is required');if(!bucket)return redactedLog({status:'dry-run',type:sourceType,bytes:Buffer.byteLength(text),revision:manifest.revision});const result=await writeIfNew(bucket,'assets/profile/revisions/'+manifest.revision+'/profile.json',text,{confirm});return redactedLog({...result,type:sourceType,bytes:Buffer.byteLength(text),revision:manifest.revision})}
-export const intake=intakeProfile
-if(process.argv[1]&&import.meta.url===`file://${process.argv[1]}`){const file=process.argv.find(x=>!x.startsWith('--')&&x!==process.argv[1]);if(!file){console.error('usage: intake-profile.mjs FILE [--confirm]');process.exit(2)}intake(file,{confirm:process.argv.includes('--confirm')}).then(x=>console.log(JSON.stringify(x))).catch(()=>{console.error('profile intake failed');process.exit(1)})}
+import fs from 'node:fs';
+import { extname } from 'node:path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { validateInput, validateProfile, extractLinkedInExport, createProfileManifest, redactedLog, writeIfNew, PROFILE_MANIFEST_POINTER, profileKey } from '../functions/_lib/profile-manifest.js';
+const defaultRun=promisify(execFile);
+export async function intakeProfile(input,{confirm=false,bucket,readFile=fs.promises.readFile,run=defaultRun,keys={}}={}) {
+ const type=input?.type||extname(String(input?.path||input)).slice(1).toLowerCase(); const path=input?.path||input;
+ if(['docx','doc'].includes(type)) throw new Error('DOCX intake is deferred; OCR is not supported');
+ const raw= type==='pdf' ? (await run('pdftotext',['-layout',path,'-'],{})).stdout : (await readFile(path)).toString('utf8');
+ validateInput({bytes:Buffer.byteLength(raw),type:type==='linkedin'?'linkedin':type==='pdf'?'pdf':'text'});
+ const linked=type==='linkedin'||type==='json'||input?.linkedin===true; const content=validateProfile(linked?JSON.stringify(extractLinkedInExport(raw)):raw);
+ const manifest=await createProfileManifest(content,{sourceType:linked?'linkedin':type,objectHashes:{profile:await (await import('../functions/_lib/profile-manifest.js')).sha256Hex(content)},profile_key:profileKey(await (await import('../functions/_lib/profile-manifest.js')).profileRevision(content)),reference_keys:keys.reference_keys||[]});
+ if(!confirm)return redactedLog({status:'dry-run',type:manifest.source_type,bytes:manifest.bytes,revision:manifest.revision});
+ if(!bucket)throw new Error('private profile bucket is required');
+ const pkey=manifest.profile_key; const profile=await writeIfNew(bucket,pkey,content,{confirm:true});
+ const pointer=JSON.stringify({...manifest,profile_key:pkey}); const current=await writeIfNew(bucket,keys.current_key||PROFILE_MANIFEST_POINTER,pointer,{confirm:true});
+ return redactedLog({status:profile.status==='written'||current.status==='written'?'written':'unchanged',type:manifest.source_type,bytes:manifest.bytes,revision:manifest.revision});
+}
+export const previewProfile=(input,options={})=>intakeProfile(input,{...options,confirm:false});
+if(import.meta.url===`file://${process.argv[1]}`){const path=process.argv.find(x=>!x.startsWith('--')&&x!==process.argv[1]);if(!path){console.error('usage: intake-profile.mjs FILE [--confirm]');process.exit(2)}intakeProfile(path,{confirm:process.argv.includes('--confirm')}).then(x=>console.log(JSON.stringify(x))).catch(e=>{console.error(e.message);process.exit(1)})}
