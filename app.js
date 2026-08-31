@@ -731,14 +731,12 @@
         throw new Error(data.error || 'Could not sign material links (HTTP ' + res.status + ')');
       }
       setPdfLinks(data.materials);
-      if (data.materials.pdf_state !== 'available') showToast(data.materials.pdf_state === 'failed' ? 'PDF rendering failed; retry generation.' : 'PDFs pending; refresh later.', 'info', 3500);
 
       if (resumeTab && data.materials.resume) resumeTab.location.href = data.materials.resume; else if (resumeTab) resumeTab.close();
       if (coverTab && data.materials.cover_letter) coverTab.location.href = data.materials.cover_letter; else if (coverTab) coverTab.close();
       if (data.materials.pdf_state !== 'available') showToast(data.materials.pdf_state === 'failed' ? 'PDF rendering failed; retry generation.' : 'PDFs are still pending; refresh later.', 'info', 3500);
       // PDF links are intentionally omitted until the API reports available.
       // PDF controls remain hidden unless the API returns signed URLs.
-      const pdfStatus = document.getElementById('pdf-status'); if (pdfStatus) pdfStatus.textContent = data.materials.pdf_state === 'available' ? 'PDFs available' : data.materials.pdf_state === 'failed' ? 'PDF render failed; retry generation.' : 'PDFs pending; refresh later.';
     } catch (err) {
       console.error('viewMaterials error:', err);
       if (resumeTab) resumeTab.close();
