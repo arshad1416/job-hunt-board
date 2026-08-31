@@ -371,9 +371,13 @@
             const byId = new Map(liveData.statuses.filter(s => s && /^\d+$/.test(String(s.id))).map(s => [String(s.id), s]));
             snapshotJobs.splice(0, snapshotJobs.length, ...snapshotJobs.map(j => byId.has(String(j.id)) ? { ...j, ...byId.get(String(j.id)) } : j));
           }
-        } catch (error) { console.warn('live status reconciliation unavailable:', error); }
+        } catch (error) {
+          if (generation !== loadGeneration) return;
+          console.warn('live status reconciliation unavailable:', error);
+        }
       }
 
+      // Re-check after the complete live reconciliation boundary.
       if (generation !== loadGeneration) return;
       allJobs = snapshotJobs;
 
