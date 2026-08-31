@@ -17,7 +17,6 @@ export async function processRenderJob(row, { env, dryRun = false, execute = tur
   const { id, job_id: jobId, version, lease_token: token, lease_expires_at: expiry, attempt_count: attempt } = row;
   const prefix = String(row.source_artifact_prefix || '');
   // Attempt-unique prefixes remain immutable while this lease is active.
-  const claimedExpiry = row.lease_expires_at;
   const parts = prefix.split('/');
   const validPrefix = row.document === 'pair' && parts.length === 5 && parts[0] === 'materials' && parts[1] === String(jobId) && parts[2] === 'versions' && parts[3] === String(version).toLowerCase() && parts[4] === `attempt-${token}` && /^[A-Za-z0-9_-]{1,80}$/.test(token) && /^\d+$/.test(parts[1]) && /^[a-f0-9]{64}$/.test(parts[3]);
   const leaseLive = async () => {
@@ -46,7 +45,7 @@ export async function processRenderJob(row, { env, dryRun = false, execute = tur
     const [manifestBytes, resume, coverLetter, details] = await Promise.all(['manifest.json', 'resume.md', 'cover_letter.md', 'job_details.json'].map(read));
     let manifest; try { manifest = JSON.parse(new TextDecoder().decode(manifestBytes)); } catch { throw new Error('manifest_invalid'); }
     if (!await validateManifestBytes(manifest, { resume, coverLetter, details }, { jobId, version })) throw new Error('source_tampered');
-    const [resumePdf, coverPdf] = await Promise.all([renderer(new TextDecoder().decode(resume), 'resume'), renderer(new TextDecoder().decode(coverLetter), 'cover_letter')]);
+    const [resumePdf, coverPdf] = await Promise.all([renderer(new TextDecoder().decode(resume), 'resume', JSON.parse(new TextDecoder().decode(details))), renderer(new TextDecoder().decode(coverLetter), 'cover_letter', JSON.parse(new TextDecoder().decode(details)))]);
     if (!resumePdf?.ok || !coverPdf?.ok) throw new Error('pdf_gates_failed');
     const staged = [[resumePdf, 'resume.pdf'], [coverPdf, 'cover_letter.pdf']];
     await leaseLive();
