@@ -285,6 +285,7 @@
     $('modal-status').style.display = 'block';
     document.querySelector('.modal-spinner-wrap').style.display = 'flex';
     $('modal-result').style.display = 'none';
+    setPdfLinks({ pdf_state: 'pending', pdf_ready: false });
     $('modal-error').style.display = 'none';
     showModal('generate-modal');
   }
