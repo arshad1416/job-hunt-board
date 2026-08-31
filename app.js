@@ -225,6 +225,8 @@
   }
 
   /** Urgency / repost / gate indicators — absent fields render nothing. */
+  const isTrueFlag = value => value === true || value === 1 || value === 'true' || value === '1';
+
   function indicatorsHtml(job) {
     const parts = [];
     if (job.knockout_reason) {
@@ -235,8 +237,7 @@
       parts.push('<span class="indicator indicator-urgency-' + u + '" title="Urgency: ' + u + '">' +
         (u === 'high' ? '🔥 High urgency' : '⚡ Medium urgency') + '</span>');
     }
-    const repost = job.is_repost === true || job.is_repost === 1 ||
-                   job.is_repost === 'true' || job.is_repost === '1';
+    const repost = isTrueFlag(job.is_repost);
     if (repost) {
       parts.push('<span class="indicator indicator-repost" title="Reposted listing">♻ Repost</span>');
     }
@@ -335,9 +336,9 @@
   // ═══════════════════════════════════════════════════════════════
   // DATA LOADING
   // ═══════════════════════════════════════════════════════════════
-  let jobsLoadSequence = 0;
+  let loadGeneration = 0;
   async function loadJobs() {
-    const loadSequence = ++jobsLoadSequence;
+    const generation = ++loadGeneration;
     loadingState.style.display = 'block';
     emptyState.style.display = 'none';
     tbody.innerHTML = '';
@@ -346,10 +347,10 @@
       const res = await fetch('/data/jobs.json?_=' + Date.now());
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const data = await res.json();
-      if (loadSequence !== jobsLoadSequence) return;
+      if (generation !== loadGeneration) return;
       if (!data || !Array.isArray(data.jobs)) throw new Error('Invalid job data');
 
-      allJobs = data.jobs.filter(j => j && typeof j === 'object').map(j => ({
+      const snapshotJobs = data.jobs.filter(j => j && typeof j === 'object').map(j => ({
         ...j,
         // Material availability is supplied only by the material API/result; status is not evidence.
         has_materials: j.has_materials === true
@@ -360,7 +361,7 @@
         try {
           const ids = allJobs.map(j => j.id).filter(id => /^\d+$/.test(String(id))).slice(0, 100);
           const live = await fetch('/api/jobs/statuses?ids=' + encodeURIComponent(ids.join(',')), { headers: authHeaders() });
-          if (loadSequence !== jobsLoadSequence) return;
+          if (generation !== loadGeneration) return;
           if (live.ok) {
             const liveData = await live.json();
             if (!liveData || !Array.isArray(liveData.statuses)) throw new Error('Invalid live status data');
@@ -369,6 +370,9 @@
           }
         } catch (error) { console.warn('live status reconciliation unavailable:', error); }
       }
+
+      if (generation !== loadGeneration) return;
+      allJobs = snapshotJobs;
 
       // Update meta display
       if (data.meta) {
@@ -399,7 +403,7 @@
       // Track filter
       if (filters.track !== 'all' && job.track !== filters.track) return false;
       if (filters.urgency !== 'all' && String(job.urgency || '').toLowerCase() !== filters.urgency) return false;
-      if (filters.indicator === 'repost' && !([true, 1, 'true', '1'].includes(job.is_repost))) return false;
+      if (filters.indicator === 'repost' && !isTrueFlag(job.is_repost)) return false;
       if (filters.indicator === 'gate' && !(job.gate || '').trim()) return false;
       if (filters.indicator === 'knockout' && !(job.knockout_reason || '').trim()) return false;
 
