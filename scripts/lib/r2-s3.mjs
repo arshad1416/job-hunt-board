@@ -1,0 +1,3 @@
+const required=['R2_ENDPOINT','R2_ACCESS_KEY_ID','R2_SECRET_ACCESS_KEY','R2_BUCKET'];
+export function r2Config(env=process.env){for(const k of required)if(!env[k])throw new Error('missing '+k);const endpoint=new URL(env.R2_ENDPOINT);if(endpoint.protocol!=='https:')throw new Error('R2_ENDPOINT must use https');return{endpoint,bucket:env.R2_BUCKET,accessKeyId:env.R2_ACCESS_KEY_ID,secretAccessKey:env.R2_SECRET_ACCESS_KEY}}
+export function createR2S3(env=process.env){const c=r2Config(env);return{async get(){throw new Error('R2 S3 adapter not yet enabled')},async head(){throw new Error('R2 S3 adapter not yet enabled')},async put(){throw new Error('R2 S3 adapter not yet enabled')},async delete(){throw new Error('R2 S3 adapter not yet enabled')}}}

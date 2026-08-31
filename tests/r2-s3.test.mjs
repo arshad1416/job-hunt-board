@@ -1,0 +1,2 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {r2Config} from '../scripts/lib/r2-s3.mjs';
+test('R2 config rejects incomplete or insecure settings',()=>{assert.throws(()=>r2Config({}),/missing R2_ENDPOINT/);assert.throws(()=>r2Config({R2_ENDPOINT:'http://x',R2_ACCESS_KEY_ID:'a',R2_SECRET_ACCESS_KEY:'b',R2_BUCKET:'c'}),/https/);assert.equal(r2Config({R2_ENDPOINT:'https://x',R2_ACCESS_KEY_ID:'a',R2_SECRET_ACCESS_KEY:'b',R2_BUCKET:'c'}).bucket,'c')});
