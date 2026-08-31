@@ -246,7 +246,8 @@ async function loadCandidateMaterials(env, track) {
     if (Buffer.byteLength(profileYaml) > 2 * 1024 * 1024 || Buffer.byteLength(profileYaml) !== selected.bytes || await sha256Hex(profileYaml) !== selected.object_hashes.profile) return null;
     if (!referenceObj || !selected.object_hashes[selectedReferenceKey]) return null;
     const referenceResume = await referenceObj.text();
-    if (Buffer.byteLength(referenceResume) > 2 * 1024 * 1024 || await sha256Hex(referenceResume) !== selected.object_hashes[selectedReferenceKey]) return null;
+    const referenceBytes = Buffer.byteLength(referenceResume);
+    if (referenceBytes > 2 * 1024 * 1024 || await sha256Hex(referenceResume) !== selected.object_hashes[selectedReferenceKey]) return null;
     return { profileYaml, referenceResume, profileRevision: selected.revision };
   } catch (err) {
     console.error('R2 candidate-materials load failed: profile_unavailable');
