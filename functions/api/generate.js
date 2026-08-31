@@ -832,6 +832,7 @@ export async function onRequestPost(context) {
   let quality, reviewerMeta, repairMeta;
   let materialVersion = null;
   let materialLeaseToken = null;
+  let stagedKeys = null;
   materials = await loadCandidateMaterials(env, job.track);
   if (!materials?.profileYaml) return json({ error: 'Candidate profile is not configured' }, 503);
   try {

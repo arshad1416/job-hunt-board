@@ -11,6 +11,14 @@ test('material lookup failure is converted to JSON 503', async () => {
   assert.match(source, /const materials = await signedMaterialUrls/);
 });
 
+test('artifact staging declares keys and puts all four staged objects', () => {
+  assert.match(source, /let stagedKeys = null;/);
+  assert.match(source, /JOB_MATERIALS_BUCKET\.put\(stagedKeys\.resume/);
+  assert.match(source, /JOB_MATERIALS_BUCKET\.put\(stagedKeys\.coverLetter/);
+  assert.match(source, /JOB_MATERIALS_BUCKET\.put\(stagedKeys\.details/);
+  assert.match(source, /JOB_MATERIALS_BUCKET\.put\(stagedKeys\.manifest/);
+});
+
 test('Workers byte counting uses TextEncoder and deployed functions contain no Buffer references', () => {
   assert.match(source, /new TextEncoder\(\)\.encode\(text\)\.length/);
   assert.doesNotMatch(source, /\bBuffer\./);
