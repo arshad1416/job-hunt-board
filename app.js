@@ -335,7 +335,9 @@
   // ═══════════════════════════════════════════════════════════════
   // DATA LOADING
   // ═══════════════════════════════════════════════════════════════
+  let jobsLoadSequence = 0;
   async function loadJobs() {
+    const loadSequence = ++jobsLoadSequence;
     loadingState.style.display = 'block';
     emptyState.style.display = 'none';
     tbody.innerHTML = '';
@@ -344,8 +346,10 @@
       const res = await fetch('/data/jobs.json?_=' + Date.now());
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const data = await res.json();
+      if (loadSequence !== jobsLoadSequence) return;
+      if (!data || !Array.isArray(data.jobs)) throw new Error('Invalid job data');
 
-      allJobs = (data.jobs || []).map(j => ({
+      allJobs = data.jobs.filter(j => j && typeof j === 'object').map(j => ({
         ...j,
         // Material availability is supplied only by the material API/result; status is not evidence.
         has_materials: j.has_materials === true
@@ -356,8 +360,11 @@
         try {
           const ids = allJobs.map(j => j.id).filter(id => /^\d+$/.test(String(id))).slice(0, 100);
           const live = await fetch('/api/jobs/statuses?ids=' + encodeURIComponent(ids.join(',')), { headers: authHeaders() });
+          if (loadSequence !== jobsLoadSequence) return;
           if (live.ok) {
-            const byId = new Map((await live.json()).statuses.map(s => [String(s.id), s]));
+            const liveData = await live.json();
+            if (!liveData || !Array.isArray(liveData.statuses)) throw new Error('Invalid live status data');
+            const byId = new Map(liveData.statuses.filter(s => s && /^\d+$/.test(String(s.id))).map(s => [String(s.id), s]));
             allJobs = allJobs.map(j => byId.has(String(j.id)) ? { ...j, ...byId.get(String(j.id)) } : j);
           }
         } catch (error) { console.warn('live status reconciliation unavailable:', error); }
