@@ -291,10 +291,17 @@
 
   function showGenerateResult(materials, quality, jobId) {
     document.querySelector('.modal-spinner-wrap').style.display = 'none';
+  function setPdfLinks(materials = {}) {
+    const ready = materials.pdf_ready === true && materials.pdf_state === 'available' && materials.resume_pdf && materials.cover_letter_pdf;
+    const status = $('pdf-status'); if (status) status.textContent = ready ? 'PDFs available' : materials.pdf_state === 'failed' ? 'PDF render failed; retry generation.' : 'PDFs pending; refresh later.';
+    for (const [id, url] of [['link-resume-pdf', ready ? materials.resume_pdf : null], ['link-cover-pdf', ready ? materials.cover_letter_pdf : null]]) { const link=$(id); if (!link) continue; link.hidden=!url; link.toggleAttribute('aria-disabled', !url); if (url) link.href=url; else link.removeAttribute('href'); }
+  }
+
     $('modal-status').style.display = 'none';
     $('modal-title').textContent = 'Materials Ready!';
     $('link-resume').href = materials.resume;
     $('link-cover').href = materials.cover_letter;
+    setPdfLinks(materials);
     lastGeneratedJobId = String(jobId);
     const q = quality || {};
     $('quality-summary').textContent = 'ATS ' + (q.ats_score ?? '—') + '/100 · ' +
@@ -718,6 +725,7 @@
       if (!res.ok) {
         throw new Error(data.error || 'Could not sign material links (HTTP ' + res.status + ')');
       }
+      setPdfLinks(data.materials);
 
       if (resumeTab && data.materials.resume) resumeTab.location.href = data.materials.resume; else if (resumeTab) resumeTab.close();
       if (coverTab && data.materials.cover_letter) coverTab.location.href = data.materials.cover_letter; else if (coverTab) coverTab.close();
