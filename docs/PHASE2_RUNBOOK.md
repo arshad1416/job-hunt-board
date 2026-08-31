@@ -40,7 +40,10 @@ export TURSO_URL="https://morning-briefing-arshad1416.aws-us-east-1.turso.io"
 export TURSO_TOKEN="$(turso db tokens create morning-briefing)"
 
 cd ~/job-hunt-board
-git fetch origin && git checkout claude/job-hunt-security-pipeline-p7f9oy
+# Use the checked-out release branch selected for this deployment; do not replace it with a stale branch name.
+git fetch origin
+git status --short
+# Review and fast-forward/update only after confirming the intended branch.
 ```
 
 `TURSO_TOKEN` stays in your shell. Do not write it into any file in this
