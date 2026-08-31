@@ -709,7 +709,7 @@ async function tryReuseMaterials(env, job, jobId) {
   }
 }
 
-export async function onRequestPost(context) {
+async function runGenerate(context) {
   const { request, env } = context;
 
   // ── 1. Parse body ──
@@ -1001,6 +1001,8 @@ export async function onRequestPost(context) {
   }
 
   let complete;
+  let sourceSetExists = false;
+  let hashesValid = false;
   let manifestObj;
   let resumeObj;
   let coverObj;
@@ -1016,8 +1018,8 @@ export async function onRequestPost(context) {
   [resumeObj, coverObj, detailsObj] = await Promise.all([env.JOB_MATERIALS_BUCKET.get(stagedKeys.resume), env.JOB_MATERIALS_BUCKET.get(stagedKeys.coverLetter), env.JOB_MATERIALS_BUCKET.get(stagedKeys.details)]);
   let parsedManifest = null;
   try { parsedManifest = manifestObj ? JSON.parse(await manifestObj.text()) : null; } catch {}
-  const sourceSetExists = isCompleteSourceSet({ resume: resumeObj, coverLetter: coverObj, details: detailsObj, manifest: manifestObj });
-  const hashesValid = sourceSetExists && parsedManifest && await validateManifestBytes(parsedManifest, { resume: await resumeObj.text(), coverLetter: await coverObj.text(), details: await detailsObj.text() }, { jobId, version: materialVersion });
+  sourceSetExists = isCompleteSourceSet({ resume: resumeObj, coverLetter: coverObj, details: detailsObj, manifest: manifestObj });
+  hashesValid = sourceSetExists && parsedManifest && await validateManifestBytes(parsedManifest, { resume: await resumeObj.text(), coverLetter: await coverObj.text(), details: await detailsObj.text() }, { jobId, version: materialVersion });
   if (!sourceSetExists || !hashesValid) {
     await markMaterialFailed(env, { jobId, version: materialVersion, leaseToken: materialLeaseToken, errorCode: 'source_incomplete', errorMessage: 'Versioned source objects are incomplete after write' });
     return json({ error: 'Stored materials are incomplete' }, 500);
@@ -1057,6 +1059,15 @@ export async function onRequestPost(context) {
       keyword_coverage: quality.keywordCoverage
     }
   });
+}
+
+export async function onRequestPost(context) {
+  try {
+    return await runGenerate(context);
+  } catch (err) {
+    console.error('generate handler unexpected failure:', err);
+    return json({ error: 'Generation failed unexpectedly' }, 500);
+  }
 }
 
 /** Helper: JSON response */
