@@ -383,6 +383,8 @@
       if (generation !== loadGeneration) return;
       allJobs = mergedJobs;
 
+      // Never let an older refresh commit metadata after a newer one starts.
+      if (generation !== loadGeneration) return;
       // Update meta display
       if (data.meta) {
         $('last-updated').textContent = data.meta.updated || data.meta.generated_at || '—';
@@ -393,6 +395,7 @@
       updateStats();
       showToast('Loaded ' + allJobs.length + ' jobs', 'success', 2000);
     } catch (err) {
+      if (generation !== loadGeneration) return;
       if (generation !== loadGeneration) return;
       console.error('loadJobs error:', err);
       showToast('Failed to load jobs: ' + err.message, 'error');
