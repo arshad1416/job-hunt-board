@@ -813,7 +813,7 @@ export async function onRequestPost(context) {
   try {
     materialVersion = await versionFor({
       normalizedJd: jobDescriptionText(job) || '',
-      profileRevision: 'profile-v1',
+      profileRevision: materials?.profileRevision || 'profile-v1',
       templateRevision: 'source-v1',
       rendererRevision: 'source-v1'
     });
