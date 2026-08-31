@@ -6,7 +6,7 @@ import { validateManifestBytes } from '../functions/_lib/material-state.js';
 export const MAX_ATTEMPTS=3, LEASE_SECONDS=600;
 export function retryAfter(attempt,now=Date.now()){return now+Math.min(3600000,1000*2**Math.max(0,attempt-1));}
 export function claimable(job,now=Date.now()){return job&&job.attempt_count<MAX_ATTEMPTS&&((job.state==='pending'&&(!job.retry_at||Date.parse(job.retry_at)<=now))||(job.state==='failed'&&job.retry_at&&Date.parse(job.retry_at)<=now)||(job.state==='claimed'&&Date.parse(job.lease_expires_at)<=now));}
-export function claimSql(){return "UPDATE render_jobs SET state='claimed',lease_token=?,lease_expires_at=datetime('now','+' || ? || ' seconds'),attempt_count=attempt_count+1 WHERE id=? AND (state='pending' OR (state='failed' AND retry_at<=datetime('now')) OR (state='claimed' AND lease_expires_at<=datetime('now'))) AND attempt_count<?"}
+export function claimSql(){return "UPDATE render_jobs SET state='claimed',lease_token=?,lease_expires_at=?,attempt_count=attempt_count+1 WHERE id=? AND (state='pending' OR (state='failed' AND retry_at<=datetime('now')) OR (state='claimed' AND lease_expires_at<=datetime('now'))) AND attempt_count<?"}
 export async function processRenderJob(row, { env, dryRun = false, execute = tursoExecute, query = tursoQuery, bucket, renderer } = {}) {
   if (dryRun) return { id: row.id, state: row.state, dryRun: true };
   const { id, job_id: jobId, version, lease_token: token, lease_expires_at: expiry, attempt_count: attempt } = row;
