@@ -243,7 +243,7 @@ async function loadCandidateMaterials(env, track) {
     ]);
     if (!profileObj) return null;
     const profileYaml = await profileObj.text();
-    if (Buffer.byteLength(profileYaml) !== selected.bytes || await sha256Hex(profileYaml) !== selected.object_hashes.profile) return null;
+    if (Buffer.byteLength(profileYaml) > 2 * 1024 * 1024 || Buffer.byteLength(profileYaml) !== selected.bytes || await sha256Hex(profileYaml) !== selected.object_hashes.profile) return null;
     if (!referenceObj || !selected.object_hashes[selectedReferenceKey]) return null;
     const referenceResume = await referenceObj.text();
     if (Buffer.byteLength(referenceResume) > 2 * 1024 * 1024 || await sha256Hex(referenceResume) !== selected.object_hashes[selectedReferenceKey]) return null;
