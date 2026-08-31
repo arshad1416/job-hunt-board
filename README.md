@@ -117,8 +117,8 @@ If `DASHBOARD_AUTH_TOKEN` is unset on the server, every non-public route fails c
 - **Prompts follow the `job-hunter` skill** (hermes-skills repo, `profiles/job-hunter`):
   each generation tailors against the structured master profile and a same-track
   reference resume loaded from private R2 objects
-  (`assets/resume_profile.yaml`, `assets/master_resume_{ev,ai}.md` — refresh via
-  `npx wrangler r2 object put`), enforces the skill's ATS output standards and
+  (`assets/profile/current.json` and immutable revision objects — create with
+  `node scripts/intake-profile.mjs FILE --confirm`; PDF/LinkedIn supported, OCR/DOCX deferred), enforces the skill's ATS output standards and
   truthful-only ground rules, and fails closed with a configuration error when
   private R2 profile objects are unavailable.
 

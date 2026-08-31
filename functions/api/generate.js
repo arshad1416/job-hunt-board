@@ -700,7 +700,7 @@ async function tryReuseMaterials(env, job, jobId) {
   } catch (err) {
     // Schema drift, R2 hiccup, anything else — reuse is an optimisation,
     // never a failure path.
-    console.error('Reuse scan failed (non-fatal):', err);
+    console.error('Reuse scan failed (non-fatal): reuse_unavailable');
     return null;
   }
 }
