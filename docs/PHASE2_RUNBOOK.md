@@ -17,6 +17,17 @@ default** and needs an explicit `--commit` or `--confirm`.
 
 ---
 
+## Operations: renderer health and recovery
+
+The Pi renderer runs from a timer invoking `node scripts/render-jobs.mjs --limit 10`; it is dry-run by default. Use `--execute` only after `node scripts/health-report.mjs` and a small canary. The shared lock prevents overlap; retries are bounded to three attempts with backoff, and failed output never replaces a successful version. Rollback restores a prior immutable version pointer, followed by a manifest/download check. Retention is intentionally non-destructive: never delete the current version; only consider cleanup after versioned artifacts are live and a restore test proves the current version survives. Interview, offer, salary, and richer follow-up remain future proposals.
+
+```bash
+node scripts/health-report.mjs --self-test
+node scripts/render-jobs.mjs --dry-run --limit 10
+```
+
+---
+
 ## 0. Prerequisites
 
 On the Pi:
