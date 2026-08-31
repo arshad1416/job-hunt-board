@@ -726,6 +726,7 @@
         throw new Error(data.error || 'Could not sign material links (HTTP ' + res.status + ')');
       }
       setPdfLinks(data.materials);
+      if (data.materials.pdf_state !== 'available') showToast(data.materials.pdf_state === 'failed' ? 'PDF rendering failed; retry generation.' : 'PDFs pending; refresh later.', 'info', 3500);
 
       if (resumeTab && data.materials.resume) resumeTab.location.href = data.materials.resume; else if (resumeTab) resumeTab.close();
       if (coverTab && data.materials.cover_letter) coverTab.location.href = data.materials.cover_letter; else if (coverTab) coverTab.close();

@@ -8,10 +8,6 @@ A single-page job hunt dashboard deployed on **Cloudflare Pages** that renders a
 
 ---
 
-## Task 4 materials delivery
-
-Apply migrations `003_material_lifecycle.sql` then additive `007_render_job_columns.sql` for existing 003 installations. On the Pi, dry-run with `node scripts/render-jobs.mjs --dry-run --limit 10`; production runs `node scripts/render-jobs.mjs --limit 10` with Pi-local Chromium. The worker uses a lock, stale-lease recovery, bounded retries, and rollback of partial PDFs. Signed links are private/no-store and bind job, exact filename, version, and expiry; only verified legacy Markdown is supported, never legacy PDFs. Failed jobs recover through the bounded retry schedule. No production canary has been run.
-
 ## How It Works
 
 ```
@@ -346,13 +342,7 @@ Score = **title (40%) + skills (30%) + location (15%) + remote fit (15%)**, with
 ## License
 
 Personal project — Arshad Kazi. Not for redistribution.
-## Task 4 operations
 
-Apply migrations 003 then additive 007. Run `node scripts/render-jobs.mjs --dry-run --limit 10` on the Pi for verification; production removes `--dry-run`. The worker uses a lock, stale-lease recovery, and bounded retries. Signed URLs are private/no-store and bind job, filename, version, and expiry. Legacy Markdown only is supported; PDFs require versioned readiness. Failed renders retry. No production canary has been run.
-## Task 4 operations
+## Task 4 materials delivery
 
-Apply migrations 003 then 007. Run `node scripts/render-jobs.mjs --dry-run --limit 10` on the Pi; production removes `--dry-run`. The worker uses locking, stale-lease recovery, and bounded retries. Signed URLs are private/no-store and bind job, filename, version, and expiry. Legacy Markdown only remains supported; PDFs require verified versioned readiness. No production canary has been run.
-## Task 4 operations
-
-Apply migrations 003 then additive 007. Run `node scripts/render-jobs.mjs --dry-run --limit 10` on the Pi; production removes `--dry-run`. Locking, stale-lease recovery, bounded retries, and rollback protect the pair render. Signed URLs are private/no-store and bind job, filename, version, and expiry. Legacy Markdown only is supported; failed renders retry. No production canary has been run.
-Task 4 signing binds job, filename, version, and expiry; PDF links are withheld until verified readiness.
+Apply migrations `003_material_lifecycle.sql` then additive `007_render_job_columns.sql` for installations that already ran 003. On the Pi, verify with `node scripts/render-jobs.mjs --dry-run --limit 10`; production runs `node scripts/render-jobs.mjs --limit 10`. The worker uses a lock, stale-lease recovery, bounded retries, and rollback. Signed URLs are private/no-store and bind job, exact filename, version, and expiry. Only verified legacy Markdown is supported; PDFs require versioned readiness. Failed jobs recover through bounded retries. No production canary has been run.
