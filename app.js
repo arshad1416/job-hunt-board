@@ -225,6 +225,9 @@
   /** Urgency / repost / gate indicators — absent fields render nothing. */
   function indicatorsHtml(job) {
     const parts = [];
+    if (job.knockout_reason) {
+      parts.push('<span class="knockout-badge" role="status" title="Explicit job evidence">⚠ ' + escapeHtml(String(job.knockout_reason).slice(0, 40)) + '</span>');
+    }
     const u = String(job.urgency || '').trim().toLowerCase();
     if (u === 'high' || u === 'medium') {
       parts.push('<span class="indicator indicator-urgency-' + u + '" title="Urgency: ' + u + '">' +
@@ -346,6 +349,18 @@
         has_materials: j.has_materials === true
       }));
 
+      // Reconcile live Turso statuses when authenticated; stale snapshot remains a safe fallback.
+      if (getToken() && allJobs.length) {
+        try {
+          const ids = allJobs.map(j => j.id).filter(id => /^\d+$/.test(String(id))).slice(0, 100);
+          const live = await fetch('/api/jobs/statuses?ids=' + encodeURIComponent(ids.join(',')), { headers: authHeaders() });
+          if (live.ok) {
+            const byId = new Map((await live.json()).statuses.map(s => [String(s.id), s]));
+            allJobs = allJobs.map(j => byId.has(String(j.id)) ? { ...j, ...byId.get(String(j.id)) } : j);
+          }
+        } catch (error) { console.warn('live status reconciliation unavailable:', error); }
+      }
+
       // Update meta display
       if (data.meta) {
         $('last-updated').textContent = data.meta.updated || data.meta.generated_at || '—';
@@ -382,7 +397,11 @@
       // meaning (applied + extended post-application statuses) so old
       // filters keep behaving; the extended options match exactly.
       if (filters.status !== 'all') {
-        if (filters.status === 'not_applied') {
+        if (filters.status === 'expired') {
+          if (String(job.deadline_status || '').toLowerCase() !== 'expired') return false;
+        } else if (filters.status === 'closing_soon') {
+          if (!['closing_soon', 'soon'].includes(String(job.deadline_status || '').toLowerCase())) return false;
+        } else if (filters.status === 'not_applied') {
           if (isPostApplied(job.status)) return false;
         } else if (filters.status === 'applied') {
           const s = normalizeStatus(job.status);

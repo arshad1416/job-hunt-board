@@ -637,4 +637,7 @@ select { cursor: pointer; }
   }
 }
 #pdf-status{font-size:.75rem;color:var(--text-secondary)}
+.status-badge,.knockout-badge { display:inline-block; margin-left:4px; padding:2px 6px; border-radius:var(--radius-xs); font-size:.68rem; font-weight:600; }
+.knockout-badge { color:var(--score-low); border:1px solid var(--score-low); }
+
 .material-state,.pdf-state{font-size:.75rem;color:var(--text-secondary);white-space:nowrap}
