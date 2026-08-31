@@ -4,6 +4,8 @@ import { createR2S3 } from './lib/r2-s3.mjs';
 import { tursoQuery, tursoExecute } from './lib/turso.mjs';
 import { acquireFetchLock } from './lib/lock.mjs';
 import { validateManifestBytes } from '../functions/_lib/material-state.js';
+// Renderer callbacks receive canonical Markdown; CLI adapters may add details without changing source validation.
+
 export const MAX_ATTEMPTS=3, LEASE_SECONDS=600;
 export function retryAfter(attempt,now=Date.now()){return now+Math.min(3600000,1000*2**Math.max(0,attempt-1));}
 export function claimable(job,now=Date.now()){return job&&job.attempt_count<MAX_ATTEMPTS&&((job.state==='pending'&&(!job.retry_at||Date.parse(job.retry_at)<=now))||(job.state==='failed'&&job.retry_at&&Date.parse(job.retry_at)<=now)||(job.state==='claimed'&&Date.parse(job.lease_expires_at)<=now));}

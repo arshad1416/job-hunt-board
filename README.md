@@ -350,4 +350,4 @@ Personal project — Arshad Kazi. Not for redistribution.
 
 ## Task 4 status
 
-The standalone `scripts/render-jobs.mjs` CLI currently supports safe dry-run polling only. Production rendering is blocked until a private R2 adapter and renderer wiring are supplied; do not run the production command. This is intentionally not a production canary.
+The standalone `scripts/render-jobs.mjs` CLI currently supports safe dry-run polling only. Production rendering remains blocked until the configured private R2 adapter and renderer callbacks are supplied; injected runs must provide both before mutation. Do not run production without them. This is intentionally not a production canary.
