@@ -369,9 +369,9 @@
             const liveData = await live.json();
             if (!liveData || !Array.isArray(liveData.statuses)) throw new Error('Invalid live status data');
             if (generation !== loadGeneration) return;
-            const byId = new Map(liveData.statuses.filter(s => s && /^\d+$/.test(String(s.id))).map(s => [String(s.id), s]));
+            const liveById = new Map(liveData.statuses.filter(s => s && /^\d+$/.test(String(s.id))).map(s => [String(s.id), s]));
             if (generation !== loadGeneration) return;
-            mergedJobs = snapshotJobs.map(j => byId.has(String(j.id)) ? { ...j, ...byId.get(String(j.id)) } : j);
+            mergedJobs = snapshotJobs.map(j => liveById.has(String(j.id)) ? { ...j, ...liveById.get(String(j.id)) } : j);
           }
         } catch (error) {
           if (generation !== loadGeneration) return;
