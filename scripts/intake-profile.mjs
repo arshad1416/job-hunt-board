@@ -18,7 +18,7 @@ export async function intakeProfile(input,{confirm=false,bucket,readFile=fs.prom
  const pkey=manifest.profile_key; const profile=await writeIfNew(bucket,pkey,content,{confirm:true});
  const pointer=JSON.stringify({...manifest,profile_key:pkey});
  // Revision objects are immutable; only the private selector is updated.
- await bucket.put(keys.current_key||PROFILE_MANIFEST_POINTER,pointer,{httpMetadata:{contentType:'application/json'}});
+ await writeIfNew(bucket,keys.current_key||PROFILE_MANIFEST_POINTER,pointer,{confirm:true,onlyIfNew:false});
  return redactedLog({status:profile.status==='written'?'written':'unchanged',type:manifest.source_type,bytes:manifest.bytes,revision:manifest.revision});
 }
 export const previewProfile=(input,options={})=>intakeProfile(input,{...options,confirm:false});
