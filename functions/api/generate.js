@@ -221,6 +221,7 @@ async function fetchJobDescription(url) {
 }
 
 // ── Candidate materials (job-hunter skill) ──
+const byteLength = text => new TextEncoder().encode(text).length;
 /**
  * Load the candidate's master profile + same-track reference resume from
  * the private R2 bucket (uploaded once via wrangler; refresh the objects
@@ -243,10 +244,10 @@ async function loadCandidateMaterials(env, track) {
     ]);
     if (!profileObj || !profileObj.text) return null;
     const profileYaml = await profileObj.text();
-    if (Buffer.byteLength(profileYaml) > 2 * 1024 * 1024 || Buffer.byteLength(profileYaml) !== selected.bytes || await sha256Hex(profileYaml) !== selected.object_hashes.profile) return null;
+    if (byteLength(profileYaml) > 2 * 1024 * 1024 || byteLength(profileYaml) !== selected.bytes || await sha256Hex(profileYaml) !== selected.object_hashes.profile) return null;
     if (!referenceObj || !selected.object_hashes[selectedReferenceKey]) return null;
     const referenceResume = await referenceObj.text();
-    const referenceBytes = Buffer.byteLength(referenceResume);
+    const referenceBytes = byteLength(referenceResume);
     if (referenceBytes > 2 * 1024 * 1024 || await sha256Hex(referenceResume) !== selected.object_hashes[selectedReferenceKey]) return null;
     return { profileYaml, referenceResume, profileRevision: selected.revision };
   } catch (err) {
@@ -742,8 +743,17 @@ export async function onRequestPost(context) {
     return json({ error: 'Job not found: ' + jobId }, 404);
   }
 
-  const existingCurrent = await getCurrentMaterial(env, jobId);
-  if (existingCurrent) return json({ success: true, job_id: jobId, cached: true, materials: await signedMaterialUrls(env, jobId, undefined, existingCurrent.version) });
+  let existingCurrent;
+  try {
+    existingCurrent = await getCurrentMaterial(env, jobId);
+    if (existingCurrent) {
+      const materials = await signedMaterialUrls(env, jobId, undefined, existingCurrent.version);
+      return json({ success: true, job_id: jobId, cached: true, materials });
+    }
+  } catch (err) {
+    console.error('Material state lookup failed:', err);
+    return json({ error: 'Material state unavailable' }, 503);
+  }
 
   // ── 3. Check if the complete legacy source set already exists ──
   // A lone resume is a partial upload, not a ready artifact.
