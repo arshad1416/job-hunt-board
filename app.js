@@ -399,7 +399,7 @@
       // Track filter
       if (filters.track !== 'all' && job.track !== filters.track) return false;
       if (filters.urgency !== 'all' && String(job.urgency || '').toLowerCase() !== filters.urgency) return false;
-      if (filters.indicator === 'repost' && !job.is_repost) return false;
+      if (filters.indicator === 'repost' && !([true, 1, 'true', '1'].includes(job.is_repost))) return false;
       if (filters.indicator === 'gate' && !(job.gate || '').trim()) return false;
       if (filters.indicator === 'knockout' && !(job.knockout_reason || '').trim()) return false;
 
