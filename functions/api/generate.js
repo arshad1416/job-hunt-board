@@ -844,7 +844,7 @@ export async function onRequestPost(context) {
     }
     materialLeaseToken = claim.leaseToken;
   } catch (err) {
-    console.error('Material lifecycle claim failed:', err);
+    console.error('Material lifecycle claim failed: lifecycle_unavailable');
     return json({ error: 'Material generation is not configured' }, 503);
   }
   try {
