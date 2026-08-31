@@ -570,10 +570,12 @@ async function tryReuseMaterials(env, job, jobId) {
     );
     if (!best) return null;
 
+    const reuseProfile = await loadCandidateMaterials(env, job.track);
+    if (!reuseProfile?.profileRevision) return null;
     const reuseJd = jobDescriptionText(job) || '';
     version = await versionFor({
       normalizedJd: reuseJd,
-      profileRevision: materials.profileRevision,
+      profileRevision: reuseProfile.profileRevision,
       templateRevision: 'source-v1',
       rendererRevision: 'source-v1'
     });
@@ -827,14 +829,14 @@ export async function onRequestPost(context) {
   try {
     materialVersion = await versionFor({
       normalizedJd: jobDescriptionText(job) || '',
-      profileRevision: materials.profileRevision,
+      profileRevision: reuseProfile.profileRevision,
       templateRevision: 'source-v1',
       rendererRevision: 'source-v1'
     });
     await ensureMaterialVersion(env, {
       jobId,
       version: materialVersion,
-      profileRevision: materials.profileRevision,
+      profileRevision: reuseProfile.profileRevision,
       templateRevision: 'source-v1',
       rendererRevision: 'source-v1'
     });
