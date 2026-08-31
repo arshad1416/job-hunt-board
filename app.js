@@ -359,7 +359,7 @@
       }));
 
       // Reconcile live Turso statuses when authenticated; stale snapshot remains a safe fallback.
-      if (getToken() && allJobs.length) {
+      if (getToken() && snapshotJobs.length) {
         try {
           const ids = allJobs.map(j => j.id).filter(id => /^\d+$/.test(String(id))).slice(0, 100);
           const live = await fetch('/api/jobs/statuses?ids=' + encodeURIComponent(ids.join(',')), { headers: authHeaders() });
@@ -369,7 +369,7 @@
             if (!liveData || !Array.isArray(liveData.statuses)) throw new Error('Invalid live status data');
             if (generation !== loadGeneration) return;
             const byId = new Map(liveData.statuses.filter(s => s && /^\d+$/.test(String(s.id))).map(s => [String(s.id), s]));
-            allJobs = allJobs.map(j => byId.has(String(j.id)) ? { ...j, ...byId.get(String(j.id)) } : j);
+            snapshotJobs.splice(0, snapshotJobs.length, ...snapshotJobs.map(j => byId.has(String(j.id)) ? { ...j, ...byId.get(String(j.id)) } : j));
           }
         } catch (error) { console.warn('live status reconciliation unavailable:', error); }
       }
@@ -382,6 +382,7 @@
         $('last-updated').textContent = data.meta.updated || data.meta.generated_at || '—';
       }
 
+      if (generation !== loadGeneration) return;
       applyFilters();
       updateStats();
       showToast('Loaded ' + allJobs.length + ' jobs', 'success', 2000);
