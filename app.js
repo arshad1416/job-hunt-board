@@ -239,7 +239,7 @@
       parts.push('<span class="indicator indicator-urgency-' + u + '" title="Urgency: ' + u + '">' +
         (u === 'high' ? '🔥 High urgency' : '⚡ Medium urgency') + '</span>');
     }
-    const repost = isTrueFlag(job.is_repost);
+    const repost = isTrueFlag(job.is_repost ?? job.repost);
     if (repost) {
       parts.push('<span class="indicator indicator-repost" title="Reposted listing">♻ Repost</span>');
     }
@@ -412,7 +412,7 @@
       // Track filter
       if (filters.track !== 'all' && job.track !== filters.track) return false;
       if (filters.urgency !== 'all' && String(job.urgency || '').toLowerCase() !== filters.urgency) return false;
-      if (filters.indicator === 'repost' && !isTrueFlag(job.is_repost)) return false;
+      if (filters.indicator === 'repost' && !isTrueFlag(job.is_repost ?? job.repost)) return false;
       if (filters.indicator === 'gate' && !(job.gate || '').trim()) return false;
       if (filters.indicator === 'knockout' && !(job.knockout_reason || '').trim()) return false;
 
