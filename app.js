@@ -225,7 +225,9 @@
   }
 
   /** Urgency / repost / gate indicators — absent fields render nothing. */
-  const isTrueFlag = value => value === true || value === 1 || value === 'true' || value === '1';
+  function isTrueFlag(value) {
+    return value === true || value === 1 || (typeof value === 'string' && (value === '1' || value.trim().toLowerCase() === 'true'));
+  }
 
   function indicatorsHtml(job) {
     const parts = [];
@@ -365,6 +367,7 @@
           if (live.ok) {
             const liveData = await live.json();
             if (!liveData || !Array.isArray(liveData.statuses)) throw new Error('Invalid live status data');
+            if (generation !== loadGeneration) return;
             const byId = new Map(liveData.statuses.filter(s => s && /^\d+$/.test(String(s.id))).map(s => [String(s.id), s]));
             allJobs = allJobs.map(j => byId.has(String(j.id)) ? { ...j, ...byId.get(String(j.id)) } : j);
           }
@@ -383,13 +386,14 @@
       updateStats();
       showToast('Loaded ' + allJobs.length + ' jobs', 'success', 2000);
     } catch (err) {
+      if (generation !== loadGeneration) return;
       console.error('loadJobs error:', err);
       showToast('Failed to load jobs: ' + err.message, 'error');
       emptyState.style.display = 'block';
       $('empty-text').textContent = 'Could not load job data.';
       $('empty-hint').textContent = 'Check that data/jobs.json exists and is valid.';
     } finally {
-      if (loadSequence === jobsLoadSequence) loadingState.style.display = 'none';
+      if (generation === loadGeneration) loadingState.style.display = 'none';
     }
   }
 
