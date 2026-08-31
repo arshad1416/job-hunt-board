@@ -226,7 +226,7 @@
 
   /** Urgency / repost / gate indicators — absent fields render nothing. */
   function isTrueFlag(value) {
-    return value === true || value === 1 || (typeof value === 'string' && (value === '1' || value.trim().toLowerCase() === 'true'));
+    return value === true || value === 1 || (typeof value === 'string' && ['1', 'true'].includes(value.trim().toLowerCase()));
   }
 
   function indicatorsHtml(job) {
