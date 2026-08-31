@@ -230,15 +230,18 @@ async function fetchJobDescription(url) {
 async function loadCandidateMaterials(env, track) {
   if (!env.JOB_MATERIALS_BUCKET) return null;
   try {
+    const pointer = await env.JOB_MATERIALS_BUCKET.get('assets/profile/current.json');
+    let selected = null;
+    if (pointer) { try { selected = JSON.parse(await pointer.text()); } catch { return null; } }
+    const profileKey = selected?.profile_key || PROFILE_KEY;
+    const referenceKey = selected?.reference_key || trackReferenceKey(track);
     const [profileObj, referenceObj] = await Promise.all([
-      env.JOB_MATERIALS_BUCKET.get(PROFILE_KEY),
-      env.JOB_MATERIALS_BUCKET.get(trackReferenceKey(track))
+      env.JOB_MATERIALS_BUCKET.get(profileKey), env.JOB_MATERIALS_BUCKET.get(referenceKey)
     ]);
     if (!profileObj) return null;
-    return {
-      profileYaml: await profileObj.text(),
-      referenceResume: referenceObj ? await referenceObj.text() : null
-    };
+    const profileYaml = await profileObj.text();
+    if (selected?.profile_hash && await sha256Hex(profileYaml) !== selected.profile_hash) return null;
+    return { profileYaml, referenceResume: referenceObj ? await referenceObj.text() : null, profileRevision: selected?.revision || await sha256Hex(profileYaml) };
   } catch (err) {
     console.error('R2 candidate-materials load failed:', err);
     return null;
@@ -820,7 +823,7 @@ export async function onRequestPost(context) {
     await ensureMaterialVersion(env, {
       jobId,
       version: materialVersion,
-      profileRevision: 'profile-v1',
+      profileRevision: materials?.profileRevision || 'profile-v1',
       templateRevision: 'source-v1',
       rendererRevision: 'source-v1'
     });
