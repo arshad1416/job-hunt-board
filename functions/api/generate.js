@@ -822,14 +822,14 @@ export async function onRequestPost(context) {
   try {
     materialVersion = await versionFor({
       normalizedJd: jobDescriptionText(job) || '',
-      profileRevision: materials?.profileRevision || 'profile-v1',
+      profileRevision: materials.profileRevision,
       templateRevision: 'source-v1',
       rendererRevision: 'source-v1'
     });
     await ensureMaterialVersion(env, {
       jobId,
       version: materialVersion,
-      profileRevision: materials?.profileRevision || 'profile-v1',
+      profileRevision: materials.profileRevision,
       templateRevision: 'source-v1',
       rendererRevision: 'source-v1'
     });
