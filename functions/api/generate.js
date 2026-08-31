@@ -249,7 +249,7 @@ async function loadCandidateMaterials(env, track) {
     if (Buffer.byteLength(referenceResume) > 2 * 1024 * 1024 || await sha256Hex(referenceResume) !== selected.object_hashes[selectedReferenceKey]) return null;
     return { profileYaml, referenceResume, profileRevision: selected.revision };
   } catch (err) {
-    console.error('R2 candidate-materials load failed:', err);
+    console.error('R2 candidate-materials load failed: profile_unavailable');
     return null;
   }
 }
