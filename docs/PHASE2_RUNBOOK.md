@@ -17,19 +17,33 @@ default** and needs an explicit `--commit` or `--confirm`.
 
 ---
 
+## Operations: renderer health and recovery (Task 7)
+
+Task 7 operations are deployment-specific: no timer unit is claimed here. Identify the actual schedule with `crontab -l`, `systemctl list-timers --all`, then `systemctl cat <unit>`; inspect the real checkout with `pwd` and run commands only from that verified cwd (never assume `~/job-hunt-board`). Use HTTP v2 Turso via `TURSO_URL` and `TURSO_TOKEN="$(cat ~/.hermes/turso_token.txt)"`; no Turso CLI and never print secret values. Do not overlap the 9AM ingestion run. From the verified repository root: `node scripts/health-report.mjs --self-test`; configured live report: `TURSO_URL=... TURSO_TOKEN=... node scripts/health-report.mjs`; offline fixture: `node scripts/health-report.mjs --input report.json`. Generation and JD-source telemetry are explicitly unavailable until a future additive migration.
+
+Run from the verified checkout (`pwd` first), with `TURSO_URL` and `TURSO_TOKEN="$(cat ~/.hermes/turso_token.txt)"` exported; do not print secrets. Discover the deployment schedule, without inventing a unit: `crontab -l`, `systemctl list-timers --all`, then `systemctl cat <unit>` and `journalctl -u <unit>`. Do not overlap the 9AM ingestion. Run `node scripts/health-report.mjs --self-test`, then the configured live report `node scripts/health-report.mjs`; use `node scripts/health-report.mjs --input report.json` only for offline input. Renderer sequence: `node scripts/render-jobs.mjs --dry-run --limit 10`, then `node scripts/render-jobs.mjs --execute --limit 1` as canary. Lock is `/tmp/job-hunt-board-fetch.lock`, stale after 6h; release only a dead/stale owner. Retries max 3, bounded 10-minute lease, exponential backoff. Restore checklist: verify `material_current` pointer/version, manifest validity, every artifact head/download and recorded hash, no active/failed render; restore only immutable non-current version and reverify. `retentionPlan` is dry-run only with live artifacts, pointer/version/hash, valid manifest, zero active/failed renders, restore proof, and non-current targets; never delete current or legacy. Save sanitized counters only; no raw errors.
+
+```bash
+node scripts/health-report.mjs --self-test
+node scripts/render-jobs.mjs --dry-run --limit 10
+```
+
+---
+
 ## 0. Prerequisites
 
 On the Pi:
 
 ```bash
 node --version          # need 18+ for global fetch
-turso --version
+export TURSO_URL="https://<database>.turso.io"
+export TURSO_TOKEN="$(cat ~/.hermes/turso_token.txt)"
 
-export TURSO_URL="https://morning-briefing-arshad1416.aws-us-east-1.turso.io"
-export TURSO_TOKEN="$(turso db tokens create morning-briefing)"
-
-cd ~/job-hunt-board
-git fetch origin && git checkout claude/job-hunt-security-pipeline-p7f9oy
+cd <repo>  # actual checked-out repository path
+# Use the checked-out release branch selected for this deployment; do not replace it with a stale branch name.
+git fetch origin
+git status --short
+# Review and fast-forward/update only after confirming the intended branch.
 ```
 
 `TURSO_TOKEN` stays in your shell. Do not write it into any file in this
@@ -494,7 +508,7 @@ broken — tell me and I will fix it before this merges.
 | §4 backfill | `UPDATE applications SET description=NULL WHERE updated_at >= datetime('now','-1 hour') AND status='found';` |
 | §5 sync script | `cp ~/sync_to_dashboard.py.bak ~/.hermes/scripts/sync_to_dashboard.py` |
 | §6 liveness | `UPDATE applications SET status='found' WHERE status='expired' AND updated_at >= datetime('now','-1 hour');` |
-| Everything | `git -C ~/job-hunt-board checkout main`, then restore the §1 dump if Turso itself needs reverting. |
+| Everything | Follow the Task 7 restore checklist in §Operations; stop only the schedule actually identified there, preserve the current pointer, and require approved operator action. |
 
 ---
 

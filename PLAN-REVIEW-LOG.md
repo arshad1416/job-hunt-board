@@ -1,6 +1,6 @@
 # Plan Review Log: Job Hunt Board adoption upgrades
 
-Cross-model review transcript for the locked implementation plan and final diff.
+Cross-model review transcript for the locked implementation plan and final diff. Task 1 documentation and preflight review remains active until all acceptance criteria pass.
 
 ## Independent Opus 5 repository-adoption review
 - Initial compact request: FAILED — 9Router returned HTTP 502 `[claude/claude-opus-5] [502]: fetch connect timeout (reset after 30s)`; no approval inferred.

@@ -85,8 +85,13 @@
         <option value="ghosted">Ghosted</option>
         <option value="saved">Saved</option>
         <option value="not_applied">Not Applied</option>
+        <option value="expired">Expired / closed</option>
+        <option value="closing_soon">Closing soon</option>
       </select>
     </div>
+
+    <div class="filter-group"><label class="filter-label" for="urgency-filter">Urgency</label><select id="urgency-filter"><option value="all">All urgency</option><option value="high">High</option><option value="medium">Medium</option></select></div>
+    <div class="filter-group"><label class="filter-label" for="indicator-filter">Decision support</label><select id="indicator-filter"><option value="all">All indicators</option><option value="repost">Repost</option><option value="gate">Has gate</option><option value="knockout">Knockout warning</option></select></div>
 
     <div class="filter-group filter-grow">
       <label class="filter-label" for="search-box">Search</label>
@@ -113,6 +118,7 @@
           <th class="col-posted">Posted</th>
           <th class="col-location">Location</th>
           <th class="col-actions">Actions</th>
+          <th class="col-material-state">Materials</th>
           <th class="col-applied">Status</th>
         </tr>
       </thead>
@@ -196,6 +202,9 @@
           <div class="result-links">
             <a href="#" id="link-resume" target="_blank" class="btn btn-primary">📄 View Resume</a>
               <a href="#" id="link-cover" target="_blank" class="btn btn-primary">✉️ View Cover Letter</a>
+            <a href="#" id="link-resume-pdf" class="btn btn-outline" target="_blank" hidden>Resume PDF</a>
+            <a href="#" id="link-cover-pdf" class="btn btn-outline" target="_blank" hidden>Cover Letter PDF</a>
+            <span id="pdf-status" role="status" aria-live="polite">PDFs pending</span>
             <button type="button" id="btn-followup-modal" class="btn btn-outline" style="display:none;">✍ Follow-up Draft</button>
           </div>
         </div>

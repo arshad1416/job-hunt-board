@@ -1,12 +1,16 @@
 # Job Hunt Board
 
-A single-page job hunt dashboard deployed on **Cloudflare Pages** that renders a daily-refreshed, ranked table of scraped jobs (EV Commercial + AI/Engineering tracks), generates tailored resumes & cover letters via **Claude Opus 5** (9Router), and tracks application status.
+A single-page job hunt dashboard deployed on **Cloudflare Pages** that renders a daily-refreshed, ranked table of scraped jobs (EV Commercial + AI/Engineering tracks), generates tailored resumes & cover letters via **GLM 5.3 via 9Router** (9Router), and tracks application status.
 
 - **Live URL:** `jobs.arshadkazi.ca` (Cloudflare Pages)
 - **Repo:** `github.com/arshad1416/job-hunt-board`
-- **Architecture:** [ARCHITECTURE_PLAN.md](./ARCHITECTURE_PLAN.md)
+- **Architecture:** [`wrangler.jsonc`](./wrangler.jsonc), Pages Functions under [`functions/`](./functions/), and the adoption contract in [`docs/UPSTREAM-ADOPTION-MATRIX.md`](./docs/UPSTREAM-ADOPTION-MATRIX.md)
 
 ---
+
+## Task 4 materials delivery
+
+Apply migration `003_material_lifecycle.sql` first; 007 is a documentation contract for existing installations, applied with `node scripts/upgrade-material-schema.mjs --commit` (default is dry-run). On the Pi, verify with `node scripts/render-jobs.mjs --dry-run --limit 10`; production runs `node scripts/render-jobs.mjs --limit 10`. The worker uses a lock, stale-lease recovery, bounded retries, and rollback. Signed URLs are private/no-store and bind job, exact filename, version, and expiry. Only verified legacy Markdown is supported; PDFs require versioned readiness. Failed jobs recover through bounded retries. No production canary has been run.
 
 ## How It Works
 
@@ -71,7 +75,7 @@ All configured in the **Cloudflare Pages dashboard** (Settings → Environment v
 |---|---|---|---|
 | `TURSO_URL` | plaintext var | dashboard + `wrangler.jsonc` | `https://morning-briefing-arshad1416.aws-us-east-1.turso.io` |
 | `TURSO_TOKEN` | **secret** | dashboard only | Turso DB auth token (Bearer). Same token the Pi uses. |
-| `NINEROUTER_API_KEY` | **secret** | dashboard only | 9Router API key for Claude Opus 5 resume generation. |
+| `NINEROUTER_API_KEY` | **secret** | dashboard only | 9Router API key for GLM 5.3 via 9Router resume generation. |
 | `DASHBOARD_AUTH_TOKEN` | **secret** | dashboard only | Shared secret for all `/api/*` routes except `/api/health`. Browser sends `X-Auth-Token` header. Generate with `openssl rand -hex 32`. |
 | `MATERIALS_SIGNING_KEY` | **secret** _(optional)_ | dashboard only | HMAC key for signed material links. Falls back to `DASHBOARD_AUTH_TOKEN` when unset. Set it to rotate material links independently of the dashboard token. |
 | `ALLOWED_ORIGINS` | plaintext var _(optional)_ | dashboard only | Comma-separated CORS allow-list. Defaults to `https://jobs.arshadkazi.ca`, `https://job-hunt-board.pages.dev`, `http://localhost:8788`. |
@@ -86,7 +90,7 @@ All configured in the **Cloudflare Pages dashboard** (Settings → Environment v
 | `POST /api/material-links` | `X-Auth-Token` required. Returns 15-minute signed URLs for one job's materials. |
 | `POST /api/generate`, `POST /api/applied`, `POST /api/status`, `POST /api/followup-draft` | `X-Auth-Token` required. |
 
-Signed links are HMAC-SHA256 over `v1:<job_id>:<filename>:<exp>` (see `functions/_lib/signing.js`). A token is bound to one job **and** one filename, so it cannot be walked sideways to another posting or another file, and it expires on its own. Browser tabs can't send custom headers, which is why signed URLs exist — `viewMaterials()` in `app.js` opens the tabs, then points them at freshly signed URLs.
+Signed links are HMAC-SHA256 over `v1:<job_id>:<version-or->:<filename>:<exp>` (see `functions/_lib/signing.js`). A token is bound to one job **and** one version-bound filename, so it cannot be walked sideways to another posting or another file, and it expires on its own. Browser tabs can't send custom headers, which is why signed URLs exist — `viewMaterials()` in `app.js` opens the tabs, then points them at freshly signed URLs.
 
 CORS is pinned to the allow-list above; an unrecognised `Origin` receives no `Access-Control-Allow-Origin` header at all. Responses carry `Vary: Origin`. Material responses are served `private, no-store` with `nosniff` and `X-Robots-Tag: noindex`.
 
@@ -96,14 +100,14 @@ If `DASHBOARD_AUTH_TOKEN` is unset on the server, every non-public route fails c
 
 - **Endpoint:** `https://morning-briefing-arshad1416.aws-us-east-1.turso.io/v2/pipeline`
 - **Auth:** `Authorization: Bearer <TURSO_TOKEN>`
-- **Table:** `applications` (schema in [ARCHITECTURE_PLAN.md](./ARCHITECTURE_PLAN.md) §5.1)
+- **Table:** `applications` (schema and additive migrations in `migrations/`)
 - The `applications` table uses `found_at` for posted date and now has an
   additive `description` column. Structured ingestion stores genuine bodies
   when the search source provides them; missing bodies are resolved and cached
   on demand. `sync_to_dashboard.py` derives the short dashboard summary from
   that body, with legacy `notes` as a fallback.
 
-### 9Router API (Claude Opus 5)
+### 9Router API (GLM 5.3 via 9Router)
 
 - **Endpoint:** `https://9router.arshadkazi.ca/v1/chat/completions` (Cloudflare Tunnel to 9Router on the Pi; OpenAI-compatible)
 - **Model:** `cc/claude-opus-5`
@@ -113,19 +117,23 @@ If `DASHBOARD_AUTH_TOKEN` is unset on the server, every non-public route fails c
 - **Prompts follow the `job-hunter` skill** (hermes-skills repo, `profiles/job-hunter`):
   each generation tailors against the structured master profile and a same-track
   reference resume loaded from private R2 objects
-  (`assets/resume_profile.yaml`, `assets/master_resume_{ev,ai}.md` — refresh via
-  `npx wrangler r2 object put`), enforces the skill's ATS output standards and
-  truthful-only ground rules, and falls back to an embedded summary profile when
-  R2 is unavailable.
+  (`assets/profile/current.json` and immutable revision objects — create with
+  `node scripts/intake-profile.mjs FILE --confirm`; PDF/LinkedIn supported, OCR/DOCX deferred), enforces the skill's ATS output standards and
+  truthful-only ground rules, and fails closed with a configuration error when
+  private R2 profile objects are unavailable.
 
 ---
+
+### Profile intake
+
+`node scripts/intake-profile.mjs FILE --confirm --reference-key assets/master_resume_ev.md` writes only after the selected same-track reference exists in the private bucket and passes size/hash checks. Preview is the default and reports redacted metadata only. Confirmed intake requires `--reference-key`; there is no public or fixed fallback.
 
 ## API Routes
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
 | `GET` | `/api/health` | none | Liveness + config check (`{ok, configured, config}`) |
-| `POST` | `/api/generate` | `X-Auth-Token` | Generate resume + cover letter via Claude Opus 5, run deterministic quality gates, store in R2, update Turso status |
+| `POST` | `/api/generate` | `X-Auth-Token` | Generate resume + cover letter via GLM 5.3 via 9Router, run deterministic quality gates, store in R2, update Turso status |
 | `POST` | `/api/applied` | `X-Auth-Token` | Legacy toggle; also maintains applied/follow-up bookkeeping |
 | `POST` | `/api/status` | `X-Auth-Token` | Set extended lifecycle status and append status ledger event |
 | `GET` | `/api/status?job_id=N` | `X-Auth-Token` | Read status ledger for one job |
@@ -138,7 +146,7 @@ If `DASHBOARD_AUTH_TOKEN` is unset on the server, every non-public route fails c
 
 ## Cloudflare Pages Setup (Step-by-Step)
 
-> Cloudflare Pages is **not yet provisioned**. Follow these exact steps.
+> Cloudflare Pages is configured through `wrangler.jsonc`; verify environment-specific bindings and secrets before deployment.
 
 ### 1. Create R2 Bucket
 
@@ -289,7 +297,7 @@ Written daily by the Pi's `sync_to_dashboard.py`:
 
 > **Note:** The Turso `applications` table has no `posted_at` column — `found_at` stands in for posted date.
 >
-> `description` **is** an `applications` column as of `migrations/001_add_description_column.sql`, and `/api/generate` sends it to Claude Opus 5 so resumes are written from the posting text rather than the job title.
+> `description` **is** an `applications` column as of `migrations/001_add_description_column.sql`, and `/api/generate` sends it to GLM 5.3 via 9Router so resumes are written from the posting text rather than the job title.
 >
 > **Descriptions and canonical URLs are captured without a per-posting board crawl.** `scripts/jobspy_json.mjs` calls jobspy's structured API instead of its lossy MCP summary, preserving the description and `job_url_direct` fields already present in search results. The employer/ATS URL is promoted over the LinkedIn/Indeed URL and known Recruitics tracking hops are removed. LinkedIn's optional per-result description request stays off by default because it is the block-prone path. When a description is still missing, `/api/generate` tries the posting's public Greenhouse, Lever, Workday, or SmartRecruiters endpoint first, then performs one bounded HTML fetch and caches the result. A title echo or text under 120 characters is treated as absent.
 >
@@ -305,7 +313,8 @@ Zero-dependency Node 18+ (global `fetch`), run from the Pi. **All are dry-run by
 |---|---|
 | `scripts/add-description-column.mjs` | Applies the additive `description` migration. Idempotent — checks `PRAGMA table_info` first and re-counts rows after. |
 | `scripts/jobspy_json.mjs` | Structured ingestion bridge. Preserves descriptions and employer URLs without enabling per-result LinkedIn detail requests. |
-| `scripts/check-liveness.mjs` | Marks dead postings `expired`. Public ATS API first, HTML second; **`uncertain` is never written**, so an access wall cannot cost you a live posting. |
+| `scripts/check-liveness.mjs` | Marks dead postings `expired`. Public ATS API first, HTML second; **`uncertain` is never written**, so an access wall cannot cost you a live posting. Dry-run by default; shared lock prevents overlap. |
+| `scripts/health-report.mjs` | Bounded, redacted operational summary from `applications`, `material_versions`, and `render_jobs`; supports `--self-test` and `--input report.json` without live network in tests. |
 | `scripts/backfill-descriptions.mjs` | Repairs old rows through public ATS APIs first, with the existing bounded HTML fallback. |
 | `scripts/verify-goal.mjs` | **Read-only.** Checks all seven success criteria against live Turso and the live site; exits non-zero until every one holds. |
 
@@ -321,7 +330,7 @@ The API-first provider, three-way liveness strategy, URL fingerprints, and bound
 
 ## Scoring Algorithm
 
-Score = **title (40%) + skills (30%) + location (15%) + remote fit (15%)**, with capped bonuses for seniority (+10) and target OEMs (+8). See [ARCHITECTURE_PLAN.md](./ARCHITECTURE_PLAN.md) §6 for full pseudocode.
+Score = **title (40%) + skills (30%) + location (15%) + remote fit (15%)**, with capped bonuses for seniority (+10) and target OEMs (+8). The scoring implementation lives in the Pi ingestion pipeline.
 
 ---
 
@@ -333,12 +342,17 @@ Score = **title (40%) + skills (30%) + location (15%) + remote fit (15%)**, with
 | Edge Functions | Cloudflare Pages Functions (Workers runtime) |
 | Database | Turso (libSQL) — HTTP v2 pipeline API |
 | Object Storage | Cloudflare R2 (`job-hunt-materials` bucket) |
-| AI Generation | Claude Opus 5 via 9Router |
+| AI Generation | GLM 5.3 via 9Router via 9Router |
 | Hosting | Cloudflare Pages |
-| Data Pipeline | Raspberry Pi 5 cron + jobspy-js MCP |
+| Data Pipeline | Raspberry Pi 5 cron + jobspy structured ingestion |
 
 ---
 
 ## License
 
 Personal project — Arshad Kazi. Not for redistribution.
+
+
+## Task 4 status
+
+The standalone `scripts/render-jobs.mjs` CLI polls safely by default (`--dry-run`) and supports guarded production rendering with `--execute --limit N` when Turso, R2 S3 credentials, and local Chromium are configured. It renders fixed local templates, validates PDF gates, and fails closed on missing inputs or renderer dependencies. No production canary has been run.
