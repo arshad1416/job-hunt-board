@@ -19,7 +19,7 @@ default** and needs an explicit `--commit` or `--confirm`.
 
 ## Operations: renderer health and recovery
 
-The Pi renderer runs from a timer invoking `node scripts/render-jobs.mjs --limit 10`; it is dry-run by default. Generate an offline report with `node scripts/health-report.mjs --self-test` or `node scripts/health-report.mjs --input report.json`; input is capped at 1000 rows and output contains counters only. The report reads existing `applications`, `material_versions`, and `render_jobs` tables; there is no `generation_jobs` table. Use `--execute` only after `node scripts/health-report.mjs` and a small canary. The shared lock prevents overlap; retries are bounded to three attempts with backoff, and failed output never replaces a successful version. Rollback restores a prior immutable version pointer, followed by a manifest/download check. Retention is intentionally non-destructive: never delete the current version; only consider cleanup after versioned artifacts are live and a restore test proves the current version survives. Interview, offer, salary, and richer follow-up remain future proposals.
+The timer unit name is deployment-specific and unknown here; inspect it rather than inventing one: `crontab -l` and `systemctl list-timers --all`. From the checked-out repository root (replace `<repo>` with the actual checkout), run `cd <repo> && node scripts/health-report.mjs --self-test` and `node scripts/health-report.mjs --input report.json`; renderer commands are `node scripts/render-jobs.mjs --dry-run --limit 10` then, only after review, `node scripts/render-jobs.mjs --execute --limit 10`. The lock is `/tmp/job-hunt-board-fetch.lock`; release/takeover is only for a dead or stale owner, never an active run. Generate an offline report with `node scripts/health-report.mjs --self-test` or `node scripts/health-report.mjs --input report.json`; input is capped at 1000 rows and output contains counters only. The report reads existing `applications`, `material_versions`, and `render_jobs` tables; there is no `generation_jobs` table. Use `--execute` only after `node scripts/health-report.mjs` and a small canary. The shared lock prevents overlap; retries are bounded to three attempts with backoff, and failed output never replaces a successful version. Rollback restores a prior immutable version pointer, followed by a manifest/download check. Retention is intentionally non-destructive: never delete the current version; only consider cleanup after versioned artifacts are live and a restore test proves the current version survives. Interview, offer, salary, and richer follow-up remain future proposals.
 
 ```bash
 node scripts/health-report.mjs --self-test
@@ -34,12 +34,10 @@ On the Pi:
 
 ```bash
 node --version          # need 18+ for global fetch
-turso --version
+export TURSO_URL="https://<database>.turso.io"
+export TURSO_TOKEN="$(cat ~/.hermes/turso_token.txt)"
 
-export TURSO_URL="https://morning-briefing-arshad1416.aws-us-east-1.turso.io"
-export TURSO_TOKEN="$(turso db tokens create morning-briefing)"
-
-cd ~/job-hunt-board
+cd <repo>  # actual checked-out repository path
 # Use the checked-out release branch selected for this deployment; do not replace it with a stale branch name.
 git fetch origin
 git status --short
