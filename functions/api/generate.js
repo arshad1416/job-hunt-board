@@ -231,19 +231,19 @@ async function fetchJobDescription(url) {
 async function loadCandidateMaterials(env, track) {
   if (!env.JOB_MATERIALS_BUCKET) return null;
   try {
-    const pointer = await env.JOB_MATERIALS_BUCKET.get('assets/profile/current.json');
-    let selected = null;
-    if (pointer) { try { selected = JSON.parse(await pointer.text()); } catch { return null; } }
-    const profileKey = selected?.profile_key || PROFILE_KEY;
-    const referenceKey = selected?.reference_key || trackReferenceKey(track);
+    const pointer = await env.JOB_MATERIALS_BUCKET.get(PROFILE_MANIFEST_POINTER);
+    if (!pointer) return null;
+    let selected; try { selected = JSON.parse(await pointer.text()); } catch { return null; }
+    const selectedProfileKey = selected?.profile_key;
+    const selectedReferenceKey = selected?.reference_key || trackReferenceKey(track);
+    if (!validateProfileManifest(selected) || selectedProfileKey !== profileKey(selected.revision)) return null;
     const [profileObj, referenceObj] = await Promise.all([
-      env.JOB_MATERIALS_BUCKET.get(profileKey), env.JOB_MATERIALS_BUCKET.get(referenceKey)
+      env.JOB_MATERIALS_BUCKET.get(selectedProfileKey), env.JOB_MATERIALS_BUCKET.get(selectedReferenceKey)
     ]);
     if (!profileObj) return null;
     const profileYaml = await profileObj.text();
-    if (selected && (!validateProfileManifest(selected) || selected.profile_key !== profileKey(selected.revision) || selected.profile_key !== profileKey(selected.revision))) return null;
-    if (selected?.profile_hash && await sha256Hex(profileYaml) !== selected.profile_hash) return null;
-    return { profileYaml, referenceResume: referenceObj ? await referenceObj.text() : null, profileRevision: selected?.revision || await sha256Hex(profileYaml) };
+    if (selected?.object_hashes?.profile && await sha256Hex(profileYaml) !== selected.object_hashes.profile) return null;
+    return { profileYaml, referenceResume: referenceObj ? await referenceObj.text() : null, profileRevision: selected.revision };
   } catch (err) {
     console.error('R2 candidate-materials load failed:', err);
     return null;
