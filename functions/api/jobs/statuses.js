@@ -3,7 +3,7 @@ import { normalizeStatus } from '../../_lib/status.js';
 
 const MAX_IDS = 100;
 const MAX_RESPONSE = 64 * 1024;
-const FIELDS = ['id','status','updated_at','applied_at','follow_up_due','urgency','is_repost','gate','knockout_reason'];
+const FIELDS = ['id','status','updated_at','applied_at','follow_up_due','urgency','is_repost','gate'];
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Vary': 'Origin' } });
 
 export async function onRequestGet({ request, env }) {
@@ -17,7 +17,7 @@ export async function onRequestGet({ request, env }) {
   if (status && !normalizeStatus(status)) return json({ error: 'invalid status' }, 400);
   const placeholders = ids.map(() => '?').join(',');
   try {
-    let rows = await tursoQuery(env, 'SELECT id,status,updated_at,applied_at,follow_up_due,urgency,is_repost,gate,knockout_reason FROM applications WHERE id IN (' + placeholders + ') ORDER BY id', ids);
+    let rows = await tursoQuery(env, 'SELECT id,status,updated_at,applied_at,follow_up_due,urgency,is_repost,gate FROM applications WHERE id IN (' + placeholders + ') ORDER BY id', ids);
     if (status) rows = rows.filter(r => normalizeStatus(r.status) === normalizeStatus(status));
     const response = { statuses: rows.map(row => Object.fromEntries(FIELDS.map(k => [k, row[k] ?? null]))) };
     if (JSON.stringify(response).length > MAX_RESPONSE) return json({ error: 'response too large' }, 413);
