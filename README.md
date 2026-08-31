@@ -8,6 +8,10 @@ A single-page job hunt dashboard deployed on **Cloudflare Pages** that renders a
 
 ---
 
+## Task 4 materials delivery
+
+Apply migrations `003_material_lifecycle.sql` then additive `007_render_job_columns.sql` for existing 003 installations. On the Pi, verify with `node scripts/render-jobs.mjs --dry-run --limit 10`; production runs `node scripts/render-jobs.mjs --limit 10`. The worker uses a lock, stale-lease recovery, bounded retries, and rollback. Signed URLs are private/no-store and bind job, exact filename, version, and expiry. Only verified legacy Markdown is supported; PDFs require versioned readiness. Failed jobs recover through bounded retries. No production canary has been run.
+
 ## How It Works
 
 ```

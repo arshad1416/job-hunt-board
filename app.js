@@ -290,7 +290,7 @@
   }
 
   function setPdfLinks(materials = {}) {
-    const ready = materials.pdf_ready === true && materials.pdf_state === 'available' && materials.resume_pdf && materials.cover_letter_pdf;
+    const ready = materials.pdf_ready === true && materials.pdf_state === 'available' && Boolean(materials.resume_pdf && materials.cover_letter_pdf);
     const status = $('pdf-status');
     if (status) status.textContent = ready ? 'PDFs available' : materials.pdf_state === 'failed' ? 'PDF render failed; retry generation.' : 'PDFs pending; refresh later.';
     for (const [id, url] of [['link-resume-pdf', ready ? materials.resume_pdf : null], ['link-cover-pdf', ready ? materials.cover_letter_pdf : null]]) {
