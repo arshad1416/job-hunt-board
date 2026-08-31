@@ -359,6 +359,7 @@
       }));
 
       // Reconcile live Turso statuses when authenticated; stale snapshot remains a safe fallback.
+      let mergedJobs = snapshotJobs;
       if (getToken() && snapshotJobs.length) {
         try {
           const ids = snapshotJobs.map(j => j.id).filter(id => /^\d+$/.test(String(id))).slice(0, 100);
@@ -369,7 +370,8 @@
             if (!liveData || !Array.isArray(liveData.statuses)) throw new Error('Invalid live status data');
             if (generation !== loadGeneration) return;
             const byId = new Map(liveData.statuses.filter(s => s && /^\d+$/.test(String(s.id))).map(s => [String(s.id), s]));
-            snapshotJobs.splice(0, snapshotJobs.length, ...snapshotJobs.map(j => byId.has(String(j.id)) ? { ...j, ...byId.get(String(j.id)) } : j));
+            if (generation !== loadGeneration) return;
+            mergedJobs = snapshotJobs.map(j => byId.has(String(j.id)) ? { ...j, ...byId.get(String(j.id)) } : j);
           }
         } catch (error) {
           if (generation !== loadGeneration) return;
@@ -379,7 +381,7 @@
 
       // Re-check after the complete live reconciliation boundary.
       if (generation !== loadGeneration) return;
-      allJobs = snapshotJobs;
+      allJobs = mergedJobs;
 
       // Update meta display
       if (data.meta) {
