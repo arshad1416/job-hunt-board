@@ -21,7 +21,7 @@ default** and needs an explicit `--commit` or `--confirm`.
 
 Task 7 operations are deployment-specific: no timer unit is claimed here. Identify the actual schedule with `crontab -l`, `systemctl list-timers --all`, then `systemctl cat <unit>`; inspect the real checkout with `pwd` and run commands only from that verified cwd (never assume `~/job-hunt-board`). Use HTTP v2 Turso via `TURSO_URL` and `TURSO_TOKEN="$(cat ~/.hermes/turso_token.txt)"`; no Turso CLI and never print secret values. Do not overlap the 9AM ingestion run. From the verified repository root: `node scripts/health-report.mjs --self-test`; configured live report: `TURSO_URL=... TURSO_TOKEN=... node scripts/health-report.mjs`; offline fixture: `node scripts/health-report.mjs --input report.json`. Generation and JD-source telemetry are explicitly unavailable until a future additive migration.
 
-Renderer checklist: first `node scripts/render-jobs.mjs --dry-run --limit 10`, then explicit canary `node scripts/render-jobs.mjs --execute --limit 1`. The shared lock is `/tmp/job-hunt-board-fetch.lock`, stale after 6 hours; release or takeover only when the owner is dead/stale, never to force overlap. Retries are capped at 3 with exponential backoff and a bounded lease. For rollback/restore, verify the selected immutable version is not current, `current.json` points to the expected version, manifest is valid, every artifact exists and matches its recorded hash, no active/failed render remains, then restore and repeat the download/hash verification. Retention is a reviewed dry-run only; never delete current or legacy artifacts. Interview, offer, salary, and richer follow-up remain future proposals.
+Renderer checklist: first `node scripts/render-jobs.mjs --dry-run --limit 10`, then explicit canary `node scripts/render-jobs.mjs --execute --limit 1`. The shared lock is `/tmp/job-hunt-board-fetch.lock`, stale after 6 hours; release or takeover only when the owner is dead/stale, never to force overlap. Retries are capped at 3 with exponential backoff and a bounded lease. For rollback/restore, verify the selected immutable version is not current, `current.json` points to the expected version, manifest is valid, every artifact exists and matches its recorded hash, no active/failed render remains, then restore and repeat the download/hash verification. Retention is a reviewed dry-run only: `node scripts/health-report.mjs --input report.json` and inspect the bounded `retentionPlan` result before any external operator action; never delete current or legacy artifacts. Interview, offer, salary, and richer follow-up remain future proposals. Save sanitized counters/logs only; never log tokens, document text, or raw errors.
 
 ```bash
 node scripts/health-report.mjs --self-test
@@ -508,7 +508,7 @@ broken — tell me and I will fix it before this merges.
 | §4 backfill | `UPDATE applications SET description=NULL WHERE updated_at >= datetime('now','-1 hour') AND status='found';` |
 | §5 sync script | `cp ~/sync_to_dashboard.py.bak ~/.hermes/scripts/sync_to_dashboard.py` |
 | §6 liveness | `UPDATE applications SET status='found' WHERE status='expired' AND updated_at >= datetime('now','-1 hour');` |
-| Everything | `git -C ~/job-hunt-board checkout main`, then restore the §1 dump if Turso itself needs reverting. |
+| Everything | From the verified checkout (`pwd` first), stop the timer/cron identified in §Operations, preserve the current pointer, and restore the §1 dump only with an approved operator. Do not assume a checkout path or branch, and do not delete artifacts. |
 
 ---
 
