@@ -119,6 +119,7 @@ export async function onRequest(context) {
 
 /** Helper: JSON response carrying CORS headers */
 function json(obj, status, cors) {
+  // Private API errors are never cacheable or content-sniffable.
   return new Response(JSON.stringify(obj), {
     status,
     headers: {
