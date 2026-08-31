@@ -1,1 +1,1 @@
-export { onRequestGet } from '../../../../[filename].js';
+export { onRequestGet } from '../../[filename].js';
