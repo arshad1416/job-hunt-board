@@ -90,7 +90,7 @@ All configured in the **Cloudflare Pages dashboard** (Settings → Environment v
 | `POST /api/material-links` | `X-Auth-Token` required. Returns 15-minute signed URLs for one job's materials. |
 | `POST /api/generate`, `POST /api/applied`, `POST /api/status`, `POST /api/followup-draft` | `X-Auth-Token` required. |
 
-Signed links are HMAC-SHA256 over `v1:<job_id>:<filename>:<version>:<exp>` (see `functions/_lib/signing.js`). A token is bound to one job **and** one filename, so it cannot be walked sideways to another posting or another file, and it expires on its own. Browser tabs can't send custom headers, which is why signed URLs exist — `viewMaterials()` in `app.js` opens the tabs, then points them at freshly signed URLs.
+Signed links are HMAC-SHA256 over `v1:<job_id>:<version-or->:<filename>:<exp>` (see `functions/_lib/signing.js`). A token is bound to one job **and** one version-bound filename, so it cannot be walked sideways to another posting or another file, and it expires on its own. Browser tabs can't send custom headers, which is why signed URLs exist — `viewMaterials()` in `app.js` opens the tabs, then points them at freshly signed URLs.
 
 CORS is pinned to the allow-list above; an unrecognised `Origin` receives no `Access-Control-Allow-Origin` header at all. Responses carry `Vary: Origin`. Material responses are served `private, no-store` with `nosniff` and `X-Robots-Tag: noindex`.
 
