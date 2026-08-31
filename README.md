@@ -10,7 +10,7 @@ A single-page job hunt dashboard deployed on **Cloudflare Pages** that renders a
 
 ## Task 4 materials delivery
 
-Apply migrations `003_material_lifecycle.sql` then additive `007_render_job_columns.sql` for existing 003 installations. On the Pi, verify with `node scripts/render-jobs.mjs --dry-run --limit 10`; production runs `node scripts/render-jobs.mjs --limit 10`. The worker uses a lock, stale-lease recovery, bounded retries, and rollback. Signed URLs are private/no-store and bind job, exact filename, version, and expiry. Only verified legacy Markdown is supported; PDFs require versioned readiness. Failed jobs recover through bounded retries. No production canary has been run.
+Apply migration `003_material_lifecycle.sql` first; 007 is a documentation contract for existing installations, applied with `node scripts/upgrade-material-schema.mjs --commit` (default is dry-run). On the Pi, verify with `node scripts/render-jobs.mjs --dry-run --limit 10`; production runs `node scripts/render-jobs.mjs --limit 10`. The worker uses a lock, stale-lease recovery, bounded retries, and rollback. Signed URLs are private/no-store and bind job, exact filename, version, and expiry. Only verified legacy Markdown is supported; PDFs require versioned readiness. Failed jobs recover through bounded retries. No production canary has been run.
 
 ## How It Works
 
@@ -347,6 +347,4 @@ Score = **title (40%) + skills (30%) + location (15%) + remote fit (15%)**, with
 
 Personal project — Arshad Kazi. Not for redistribution.
 
-## Task 4 materials delivery
-
-Apply migration `003_material_lifecycle.sql` first. For existing 003 installations, `007_render_job_columns.sql` is a documentation contract; apply its columns with `node scripts/upgrade-material-schema.mjs --commit` (without `--commit` is a dry-run). On the Pi, verify with `node scripts/render-jobs.mjs --dry-run --limit 10`; production runs `node scripts/render-jobs.mjs --limit 10`. The worker uses a lock, stale-lease recovery, bounded retries, and rollback. Signed URLs are private/no-store and bind job, exact filename, version, and expiry. Only verified legacy Markdown is supported; PDFs require versioned readiness. Failed jobs recover through bounded retries. No production canary has been run.
+.
