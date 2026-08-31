@@ -8,7 +8,7 @@ const defaultRun=promisify(execFile);
 export async function intakeProfile(input,{confirm=false,bucket,readFile=fs.promises.readFile,run=defaultRun,keys={}}={}) {
  const type=input?.type||extname(String(input?.path||input)).slice(1).toLowerCase(); const path=input?.path||input;
  if(['docx','doc'].includes(type)) throw new Error('DOCX intake is deferred; OCR is not supported');
- const original=await readFile(path); if(original.byteLength>2*1024*1024) throw new Error('profile input exceeds 2 MiB limit'); const raw= type==='pdf' ? (await run('pdftotext',['-layout',path,'-'],{})) : {stdout:original.toString('utf8'),stderr:'',code:0}; if(type==='pdf' && (raw.code && raw.code!==0 || raw.stderr || typeof raw.stdout!=='string')) throw new Error('PDF text extraction failed'); const textRaw=raw.stdout;
+ const original=await readFile(path); if(original.byteLength>2*1024*1024) throw new Error('profile input exceeds 2 MiB limit'); const extracted= type==='pdf' ? await run('pdftotext',['-layout',path,'-'],{}) : {stdout:original.toString('utf8'),code:0}; if(type==='pdf' && (extracted.code !== undefined && extracted.code !== 0 || typeof extracted.stdout!=='string')) throw new Error('PDF text extraction failed'); const textRaw=extracted.stdout;
  if (type==='pdf' && !textRaw.trim()) throw new Error('PDF produced no text; OCR is deferred');
  validateInput({bytes:Buffer.byteLength(textRaw),type:type==='linkedin'?'linkedin':type==='pdf'?'pdf':'text'});
  const linked=type==='linkedin'||type==='json'||input?.linkedin===true; const content=validateProfile(linked?JSON.stringify(extractLinkedInExport(textRaw)):textRaw);
