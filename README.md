@@ -347,4 +347,7 @@ Score = **title (40%) + skills (30%) + location (15%) + remote fit (15%)**, with
 
 Personal project — Arshad Kazi. Not for redistribution.
 
-.
+
+## Task 4 status
+
+The standalone `scripts/render-jobs.mjs` CLI currently supports safe dry-run polling only. Production rendering is blocked until a private R2 adapter and renderer wiring are supplied; do not run the production command. This is intentionally not a production canary.
