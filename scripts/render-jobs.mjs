@@ -48,8 +48,7 @@ export async function processRenderJob(row, { env, dryRun = false, execute = tur
     for (const [, name] of staged) { await leaseLive(); if (bucket.head && await bucket.head(prefix + '/' + name)) throw new Error('pdf_exists'); }
     const uploaded = [];
     try {
-      for (const [pdf, name] of staged) { await leaseLive(); await bucket.put(prefix + '/' + name, pdf.body, { onlyIfNew: true });
-        uploaded.push(prefix + '/' + name);
+      for (const [pdf, name] of staged) { await leaseLive(); uploaded.push(prefix + '/' + name); await bucket.put(prefix + '/' + name, pdf.body, { onlyIfNew: true });
         await leaseLive(); }
     } catch (error) {
       if (bucket.delete) for (const key of uploaded) { try { await bucket.delete(key); } catch {} }
