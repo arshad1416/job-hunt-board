@@ -813,6 +813,8 @@ export async function onRequestPost(context) {
   let quality, reviewerMeta, repairMeta;
   let materialVersion = null;
   let materialLeaseToken = null;
+  materials = await loadCandidateMaterials(env, job.track);
+  if (!materials?.profileYaml) return json({ error: 'Candidate profile is not configured' }, 503);
   try {
     materialVersion = await versionFor({
       normalizedJd: jobDescriptionText(job) || '',
@@ -837,7 +839,6 @@ export async function onRequestPost(context) {
     return json({ error: 'Material generation is not configured' }, 503);
   }
   try {
-    materials = await loadCandidateMaterials(env, job.track);
     if (!materials?.profileYaml) {
       await markMaterialFailed(env, { jobId: jobId, version: materialVersion, leaseToken: materialLeaseToken, errorCode: 'profile_unconfigured', errorMessage: 'Private candidate profile is not configured' });
       materialLeaseToken = null;
