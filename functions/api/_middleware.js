@@ -120,7 +120,10 @@ export async function onRequest(context) {
 /** Helper: JSON response carrying CORS headers */
 function json(obj, status, cors) {
   // Private API errors are never cacheable or content-sniffable.
-  const securityHeaders = { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' };
+  const securityHeaders = {
+    'Cache-Control': 'no-store',
+    'X-Content-Type-Options': 'nosniff'
+  };
   return new Response(JSON.stringify(obj), {
     status,
     headers: {
