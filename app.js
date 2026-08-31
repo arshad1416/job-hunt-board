@@ -361,7 +361,7 @@
       // Reconcile live Turso statuses when authenticated; stale snapshot remains a safe fallback.
       if (getToken() && snapshotJobs.length) {
         try {
-          const ids = allJobs.map(j => j.id).filter(id => /^\d+$/.test(String(id))).slice(0, 100);
+          const ids = snapshotJobs.map(j => j.id).filter(id => /^\d+$/.test(String(id))).slice(0, 100);
           const live = await fetch('/api/jobs/statuses?ids=' + encodeURIComponent(ids.join(',')), { headers: authHeaders() });
           if (generation !== loadGeneration) return;
           if (live.ok) {
