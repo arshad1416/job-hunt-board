@@ -402,7 +402,7 @@ async function appendStatusEvent(env, jobId, status, note) {
   try {
     await tursoExecute(env, 'INSERT INTO status_events (job_id, status, note) VALUES (?, ?, ?)', [jobId, status, note]);
   } catch (err) {
-    console.error('status_events append failed (non-fatal):', err);
+    console.error('status_events append failed (non-fatal): status_unavailable');
   }
 }
 
@@ -415,7 +415,7 @@ async function markMaterialsReady(env, jobId, note, version = null) {
     if (result) await appendStatusEvent(env, jobId, 'materials_ready', note);
     return result;
   } catch (err) {
-    console.error('Turso materials-ready update failed (non-fatal):', err);
+    console.error('Turso materials-ready update failed (non-fatal): lifecycle_unavailable');
     return false;
   }
 }
