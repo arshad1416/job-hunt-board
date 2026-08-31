@@ -6,6 +6,7 @@ export function profileKey(revision){if(!/^[a-f0-9]{64}$/.test(String(revision))
 export function referenceKey(key){if(!/^assets\/(master_resume_(ev|ai)\.md)$/.test(String(key)))throw new Error('invalid reference key');return key}
 export function metadataProjection(manifest){return {schema:manifest?.schema,revision:manifest?.revision,source_type:manifest?.source_type,bytes:manifest?.bytes,object_hashes:manifest?.object_hashes}}
 export function redactedError(code){return {error:String(code||'profile_error').replace(/[^a-z0-9_-]/gi,'_').slice(0,80)}}
+export const PROFILE_ERROR_CODES = Object.freeze({missing:'profile_unconfigured',invalid:'profile_manifest_invalid',tampered:'profile_integrity_failed'});
 export const PROFILE_MANIFEST_KEY = 'assets/profile-manifest.json';
 export const MAX_INPUT = MAX_INPUT_BYTES;
 export async function sha256Hex(value){const bytes=new TextEncoder().encode(String(value));return [...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(x=>x.toString(16).padStart(2,'0')).join('')}
