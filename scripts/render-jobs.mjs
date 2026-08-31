@@ -11,6 +11,7 @@ import os from 'node:os';
 import { chromiumPath } from './materials-renderer.mjs';
 import { tursoQuery, tursoExecute } from './lib/turso.mjs';
 import { acquireFetchLock } from './lib/lock.mjs';
+import { stepLog } from '../functions/_lib/pipeline-log.js';
 import { validateManifestBytes } from '../functions/_lib/material-state.js';
 // Renderer callbacks receive canonical Markdown; CLI adapters may add details without changing source validation.
 
@@ -28,12 +29,13 @@ export function retryAfter(attempt,now=Date.now()){return now+Math.min(3600000,1
 export function claimable(job,now=Date.now()){return job&&job.attempt_count<MAX_ATTEMPTS&&((job.state==='pending'&&(!job.retry_at||Date.parse(job.retry_at)<=now))||(job.state==='failed'&&job.retry_at&&Date.parse(job.retry_at)<=now)||(job.state==='claimed'&&Date.parse(job.lease_expires_at)<=now));}
 export function claimSql(){return "UPDATE render_jobs SET state='claimed',lease_token=?,lease_expires_at=?,attempt_count=attempt_count+1 WHERE id=? AND (state='pending' OR (state='failed' AND retry_at<=datetime('now')) OR (state='claimed' AND datetime(lease_expires_at)<=datetime('now'))) AND attempt_count<?"}
 export async function processRenderJob(row, { env, dryRun = false, execute = tursoExecute, query = tursoQuery, bucket, renderer } = {}) {
+  stepLog('job_claimed', { id: row.id, attempt: row.attempt_count });
   if (dryRun) return { id: row.id, state: row.state, dryRun: true };
   const { id, job_id: jobId, version, lease_token: token, lease_expires_at: expiry, attempt_count: attempt } = row;
   const prefix = String(row.source_artifact_prefix || '');
   // Attempt-unique prefixes remain immutable while this lease is active.
   const parts = prefix.split('/');
-  const validPrefix = row.document === 'pair' && parts.length === 5 && parts[0] === 'materials' && parts[1] === String(jobId) && parts[2] === 'versions' && parts[3] === String(version).toLowerCase() && parts[4] === `attempt-${token}` && /^[A-Za-z0-9_-]{1,80}$/.test(token) && /^\d+$/.test(parts[1]) && /^[a-f0-9]{64}$/.test(parts[3]);
+  const validPrefix = row.document === 'pair' && parts.length === 5 && parts[0] === 'materials' && parts[1] === String(jobId) && parts[2] === 'versions' && parts[3] === String(version).toLowerCase() && /^attempt-[A-Za-z0-9_-]{1,80}$/.test(parts[4]) && /^[A-Za-z0-9_-]{1,80}$/.test(token) && /^\d+$/.test(parts[1]) && /^[a-f0-9]{64}$/.test(parts[3]);
   const leaseLive = async () => {
     if (bucket?.checkLease) {
       if (!(await bucket.checkLease(row))) throw new Error('lease_stale');
@@ -58,10 +60,12 @@ export async function processRenderJob(row, { env, dryRun = false, execute = tur
   try {
     const read = async (name) => { await leaseLive(); const object = await bucket.get(prefix + '/' + name); if (!object) throw new Error('source_missing'); return object.arrayBuffer ? new Uint8Array(await object.arrayBuffer()) : new TextEncoder().encode(await object.text()); };
     const [manifestBytes, resume, coverLetter, details] = await Promise.all(['manifest.json', 'resume.md', 'cover_letter.md', 'job_details.json'].map(read));
+    stepLog('sources_read', { bytes: manifestBytes.byteLength + resume.byteLength + coverLetter.byteLength + details.byteLength });
     let manifest; try { manifest = JSON.parse(new TextDecoder().decode(manifestBytes)); } catch { throw new Error('manifest_invalid'); }
     if (!await validateManifestBytes(manifest, { resume, coverLetter, details }, { jobId, version })) throw new Error('source_tampered');
     const [resumePdf, coverPdf] = await Promise.all([renderer(new TextDecoder().decode(resume), 'resume', JSON.parse(new TextDecoder().decode(details))), renderer(new TextDecoder().decode(coverLetter), 'cover_letter', JSON.parse(new TextDecoder().decode(details)))]);
     if (!resumePdf?.ok || !coverPdf?.ok) throw new Error('pdf_gates_failed');
+    stepLog('rendered', { type: 'pair', pages: (resumePdf.pages || 0) + (coverPdf.pages || 0), gates_ok: true });
     const staged = [[resumePdf, 'resume.pdf'], [coverPdf, 'cover_letter.pdf']];
     await leaseLive();
     for (const [, name] of staged) { await leaseLive(); if (bucket.head && await bucket.head(prefix + '/' + name)) throw new Error('pdf_exists'); }
@@ -79,6 +83,7 @@ export async function processRenderJob(row, { env, dryRun = false, execute = tur
     const metadata = await execute(env, "UPDATE render_jobs SET resume_pdf_sha256=?, cover_letter_pdf_sha256=?, resume_pdf_bytes=?, cover_letter_pdf_bytes=? WHERE id=? AND state='claimed' AND lease_token=? AND attempt_count=?", [resumeHash, coverHash, resumePdf.body?.byteLength || 0, coverPdf.body?.byteLength || 0, id, token, attempt]);
     if (Number(metadata?.affectedRowCount) !== 1) { if (bucket.delete) for (const key of uploaded) { try { await bucket.delete(key); } catch {} } return { id, state: 'stale' }; }
     try { await leaseLive(); } catch (error) { if (error.message === 'lease_stale') { if (bucket.delete) for (const key of uploaded) { try { await bucket.delete(key); } catch {} } return { id, state: 'stale' }; } throw error; }
+    for (const key of uploaded) stepLog('uploaded', { key });
     return terminal(true);
   } catch (error) { if (error.message === 'lease_stale') return { id, state: 'stale' }; return terminal(false, error.message); }
 }

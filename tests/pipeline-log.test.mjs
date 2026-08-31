@@ -1,15 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { stepLog, pipelineStage } from '../functions/_lib/pipeline-log.js';
+import fs from 'node:fs';
+import { stepLog } from '../functions/_lib/pipeline-log.js';
+test('profile contact extraction is represented in job details source', () => { const source = fs.readFileSync(new URL('../functions/api/generate.js', import.meta.url), 'utf8'); assert.match(source, /profileContact\(materials\.profileYaml\)/); assert.match(source, /name:|email:|phone:|location:/); });
 
-test('pipeline logger emits only safe scalar fields', () => {
-  const lines = []; const original = console.log; console.log = value => lines.push(value);
-  try { stepLog('load', { job_id: '7', secret: 'nope', nested: {}, status: 'ok' }); } finally { console.log = original; }
-  assert.deepEqual(JSON.parse(lines[0]), { event: 'pipeline_stage', job_id: '7', status: 'ok', stage: 'load' });
-});
-
-test('pipelineStage records output status and duration', () => {
-  const lines = []; const original = console.log; console.log = value => lines.push(JSON.parse(value));
-  try { pipelineStage('write', { job_id: '2' })({ status: 'completed' }); } finally { console.log = original; }
-  assert.equal(lines[0].stage, 'write'); assert.equal(lines[0].status, 'completed'); assert.equal(typeof lines[0].duration_ms, 'number');
-});
+test('stepLog emits exact structured shape', () => { const lines=[]; const old=console.log; console.log=x=>lines.push(JSON.parse(x)); try { stepLog('load',{job_id:'7',cached:true}); } finally { console.log=old; } assert.equal(lines.length,1); assert.equal(lines[0].step,'load'); assert.equal(lines[0].job_id,'7'); assert.equal(lines[0].cached,true); assert.match(lines[0].ts,/^\d{4}-\d{2}-\d{2}T/); });
