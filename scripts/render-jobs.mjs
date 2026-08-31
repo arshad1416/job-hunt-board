@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import { randomUUID } from 'node:crypto';
 import { createR2S3 } from './lib/r2-s3.mjs';
+import { loadTemplates, renderMaterials, renderPdf } from './materials-renderer.mjs';
+import fs from 'node:fs';
 import { tursoQuery, tursoExecute } from './lib/turso.mjs';
 import { acquireFetchLock } from './lib/lock.mjs';
 import { validateManifestBytes } from '../functions/_lib/material-state.js';
