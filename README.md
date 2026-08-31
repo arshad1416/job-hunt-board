@@ -314,7 +314,7 @@ Zero-dependency Node 18+ (global `fetch`), run from the Pi. **All are dry-run by
 | `scripts/add-description-column.mjs` | Applies the additive `description` migration. Idempotent — checks `PRAGMA table_info` first and re-counts rows after. |
 | `scripts/jobspy_json.mjs` | Structured ingestion bridge. Preserves descriptions and employer URLs without enabling per-result LinkedIn detail requests. |
 | `scripts/check-liveness.mjs` | Marks dead postings `expired`. Public ATS API first, HTML second; **`uncertain` is never written**, so an access wall cannot cost you a live posting. Dry-run by default; shared lock prevents overlap. |
-| `scripts/health-report.mjs` | Bounded, redacted generation/render latency, failure, reuse, quality-gate, JD-source, stale-lease, and queue-depth summary; `--self-test` is offline. |
+| `scripts/health-report.mjs` | Bounded, redacted operational summary from `applications`, `material_versions`, and `render_jobs`; supports `--self-test` and `--input report.json` without live network in tests. |
 | `scripts/backfill-descriptions.mjs` | Repairs old rows through public ATS APIs first, with the existing bounded HTML fallback. |
 | `scripts/verify-goal.mjs` | **Read-only.** Checks all seven success criteria against live Turso and the live site; exits non-zero until every one holds. |
 
