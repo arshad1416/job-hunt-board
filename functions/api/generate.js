@@ -236,6 +236,7 @@ async function loadCandidateMaterials(env, track) {
     let selected; try { selected = JSON.parse(await pointer.text()); } catch { return null; }
     const selectedProfileKey = selected?.profile_key;
     const selectedReferenceKey = selected?.reference_key || trackReferenceKey(track);
+    if (selected?.reference_keys && !selected.reference_keys.includes(selectedReferenceKey)) return null;
     if (!validateProfileManifest(selected) || selectedProfileKey !== profileKey(selected.revision)) return null;
     const [profileObj, referenceObj] = await Promise.all([
       env.JOB_MATERIALS_BUCKET.get(selectedProfileKey), env.JOB_MATERIALS_BUCKET.get(selectedReferenceKey)
