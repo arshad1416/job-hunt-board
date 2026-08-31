@@ -241,7 +241,7 @@ async function loadCandidateMaterials(env, track) {
     const [profileObj, referenceObj] = await Promise.all([
       env.JOB_MATERIALS_BUCKET.get(selectedProfileKey), env.JOB_MATERIALS_BUCKET.get(selectedReferenceKey)
     ]);
-    if (!profileObj) return null;
+    if (!profileObj || !profileObj.text) return null;
     const profileYaml = await profileObj.text();
     if (Buffer.byteLength(profileYaml) > 2 * 1024 * 1024 || Buffer.byteLength(profileYaml) !== selected.bytes || await sha256Hex(profileYaml) !== selected.object_hashes.profile) return null;
     if (!referenceObj || !selected.object_hashes[selectedReferenceKey]) return null;
