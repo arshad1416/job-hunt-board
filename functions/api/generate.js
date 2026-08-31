@@ -39,6 +39,7 @@ import { extractJobDescription } from '../_lib/extract-jd.mjs';
 import { fetchPublicAtsJob } from '../_lib/public-ats.mjs';
 import { isSafePublicHttpUrl } from '../_lib/job-url.mjs';
 import { MISSION, RESUME_STANDARDS, COVER_LETTER_STANDARDS, PROFILE_KEY, trackReferenceKey } from '../_lib/job-hunter-skill.js';
+import { validateProfileManifest, profileKey, PROFILE_MANIFEST_POINTER } from '../_lib/profile-manifest.js';
 import { jaccard, tokenize } from '../_lib/cv-gates.js';
 import {
   buildQualityReport,
@@ -240,6 +241,7 @@ async function loadCandidateMaterials(env, track) {
     ]);
     if (!profileObj) return null;
     const profileYaml = await profileObj.text();
+    if (selected && (!validateProfileManifest(selected) || selected.profile_key !== profileKey(selected.revision) || selected.profile_key !== profileKey(selected.revision))) return null;
     if (selected?.profile_hash && await sha256Hex(profileYaml) !== selected.profile_hash) return null;
     return { profileYaml, referenceResume: referenceObj ? await referenceObj.text() : null, profileRevision: selected?.revision || await sha256Hex(profileYaml) };
   } catch (err) {
