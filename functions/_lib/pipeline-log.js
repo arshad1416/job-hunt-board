@@ -11,7 +11,7 @@ function safeFields(fields = {}) {
 }
 
 /** Emit one JSON line; logging must never change request behavior. */
-export function logPipelineStage(stage, fields = {}) {
+export function stepLog(stage, fields = {}) {
   try {
     console.log(JSON.stringify({ event: 'pipeline_stage', ...safeFields(fields), stage: String(stage) }));
   } catch { /* ponytail: logging ceiling is best-effort; add durable telemetry when needed. */ }
@@ -19,5 +19,5 @@ export function logPipelineStage(stage, fields = {}) {
 
 export function pipelineStage(stage, fields = {}) {
   const started = Date.now();
-  return (extra = {}) => logPipelineStage(stage, { ...fields, ...extra, duration_ms: Date.now() - started });
+  return (extra = {}) => stepLog(stage, { ...fields, ...extra, duration_ms: Date.now() - started });
 }

@@ -871,8 +871,7 @@ async function runGenerate(context) {
       materialLeaseToken = null;
       return json({ error: 'Candidate profile is not configured' }, 503);
     }
-    logStage({ status: 'llm_started', version: materialVersion });
-    logStage({ status: 'llm_started', version: materialVersion });
+    logStage({ stage: 'llm', status: 'started', version: materialVersion });
     [resumeMd, coverMd] = await Promise.all([
       callLLM(env.NINEROUTER_API_KEY, resumePrompt(job, materials)),
       callLLM(env.NINEROUTER_API_KEY, coverLetterPrompt(job, materials))
@@ -1055,7 +1054,7 @@ async function runGenerate(context) {
   await markMaterialsReady(env, jobId, 'materials generated', materialVersion);
 
   // ── 7. Return success (short-lived signed links) ──
-  logStage({ status: 'completed', version: materialVersion, jd_source: jdSource });
+  logStage({ stage: 'complete', status: 'completed', version: materialVersion, jd_source: jdSource });
   return json({
     success: true,
     job_id: jobId,
