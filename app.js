@@ -302,7 +302,6 @@
     $('link-resume').href = materials.resume;
     $('link-cover').href = materials.cover_letter;
     setPdfLinks(materials);
-    setPdfLinks(materials);
     lastGeneratedJobId = String(jobId);
     const q = quality || {};
     $('quality-summary').textContent = 'ATS ' + (q.ats_score ?? '—') + '/100 · ' +
