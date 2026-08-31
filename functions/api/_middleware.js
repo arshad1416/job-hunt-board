@@ -121,6 +121,6 @@ export async function onRequest(context) {
 function json(obj, status, cors) {
   return new Response(JSON.stringify(obj), {
     status,
-    headers: { 'Content-Type': 'application/json', ...cors, Vary: 'Origin' }
+    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', ...cors, Vary: 'Origin' }
   });
 }
