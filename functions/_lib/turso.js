@@ -12,10 +12,10 @@ function buildArg(value) {
   if (value === null || value === undefined) return { type: 'null' };
   if (typeof value === 'number') {
     return Number.isInteger(value)
-      ? { type: 'integer', value: value }
-      : { type: 'float', value: value };
+      ? { type: 'integer', value: String(value) }
+      : { type: 'float', value: String(value) };
   }
-  if (typeof value === 'boolean') return { type: 'integer', value: value ? 1 : 0 };
+  if (typeof value === 'boolean') return { type: 'integer', value: value ? '1' : '0' };
   return { type: 'text', value: String(value) };
 }
 

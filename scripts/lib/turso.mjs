@@ -15,7 +15,7 @@ function buildArg(value) {
   if (typeof value === 'number') {
     return Number.isInteger(value)
       ? { type: 'integer', value: String(value) }
-      : { type: 'float', value };
+      : { type: 'float', value: String(value) };
   }
   if (typeof value === 'boolean') return { type: 'integer', value: value ? '1' : '0' };
   return { type: 'text', value: String(value) };
