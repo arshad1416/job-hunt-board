@@ -570,8 +570,6 @@ async function tryReuseMaterials(env, job, jobId) {
     );
     if (!best) return null;
 
-    const reuseProfile = await loadCandidateMaterials(env, job.track);
-    if (!reuseProfile?.profileRevision) return null;
     const reuseJd = jobDescriptionText(job) || '';
     version = await versionFor({
       normalizedJd: reuseJd,
