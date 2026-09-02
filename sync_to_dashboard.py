@@ -580,6 +580,29 @@ def git_push(repo_path: Path, message: str) -> bool:
             print("[sync] Could not inspect the staged jobs.json change", file=sys.stderr)
             return False
 
+        # master must only ever receive fast-forwards from main. If it holds
+        # commits main lacks (e.g. a PR was merged directly into master), the
+        # promotion push will be rejected — surface that explicitly instead
+        # of a generic git error, so stale dashboard data is diagnosed the
+        # same day it happens.
+        fetch_master = subprocess.run(
+            ["git", "-C", str(repo_path), "fetch", "origin", "master"],
+            capture_output=True, text=True, timeout=60,
+        )
+        ff_check = subprocess.run(
+            ["git", "-C", str(repo_path), "merge-base", "--is-ancestor",
+             "origin/master", "main"],
+            capture_output=True, text=True, timeout=30,
+        )
+        if fetch_master.returncode != 0 or ff_check.returncode != 0:
+            print(
+                "[sync] master has commits main lacks (or could not be "
+                "fetched) — merge master into main manually before the next "
+                "sync, or the dashboard data will stay stale.",
+                file=sys.stderr,
+            )
+            return False
+
         r1 = subprocess.run(["git", "-C", str(repo_path), "push", "origin", "main"],
                             capture_output=True, text=True, timeout=60)
         r2 = subprocess.run(["git", "-C", str(repo_path), "push", "origin", "main:master"],
