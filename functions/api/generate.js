@@ -90,7 +90,24 @@ const REVIEW_MAX_TOKENS = 9000;
 const REVIEW_TEMPERATURE = 0.2;
 
 /** One bounded repair pass, resume-only; never a retry loop. */
-const REPAIR_MAX_TOKENS = 2000;
+const REPAIR_MAX_TOKENS = 4000;
+
+/** Writer caps: a full senior two-page resume needs more than the 2000-token
+ * default; job 3468's draft truncated mid-sentence at that ceiling. */
+const RESUME_MAX_TOKENS = 4000;
+const COVER_MAX_TOKENS = 2000;
+
+/** Deterministic truncation detector: a token-capped writer loses trailing
+ * sections first, so every standard section must be present. (A bare
+ * end-of-text punctuation check would false-positive on legitimate last
+ * lines like a degree without a period.) */
+function truncatedResumeDocument(md) {
+  const text = String(md || '');
+  for (const section of ['SUMMARY', 'SKILLS', 'EXPERIENCE', 'EDUCATION']) {
+    if (!new RegExp('^#{1,4}\\s+.*' + section, 'im').test(text)) return 'missing ' + section;
+  }
+  return null;
+}
 const REPAIR_TEMPERATURE = 0.2;
 
 const JD_FETCH_UA =
@@ -898,11 +915,22 @@ async function runGenerate(context) {
     }
     stepLog('generation_start', {});
     [resumeMd, coverMd] = await Promise.all([
-      callLLM(env.NINEROUTER_API_KEY, resumePrompt(job, materials)),
-      callLLM(env.NINEROUTER_API_KEY, coverLetterPrompt(job, materials, hiringManager))
+      callLLM(env.NINEROUTER_API_KEY, resumePrompt(job, materials), { maxTokens: RESUME_MAX_TOKENS }),
+      callLLM(env.NINEROUTER_API_KEY, coverLetterPrompt(job, materials, hiringManager), { maxTokens: COVER_MAX_TOKENS })
     ]);
 
     stepLog('generation_complete', {});
+    // A token-capped writer can end mid-sentence; detect it deterministically,
+    // retry the resume once with the explicit cap, and never store a cut document.
+    if (truncatedResumeDocument(resumeMd)) {
+      stepLog('resume_truncated', { reason: truncatedResumeDocument(resumeMd) });
+      resumeMd = await callLLM(env.NINEROUTER_API_KEY, resumePrompt(job, materials), { maxTokens: RESUME_MAX_TOKENS });
+      const stillTruncated = truncatedResumeDocument(resumeMd);
+      if (stillTruncated) {
+        await markMaterialFailed(env, { jobId: jobId, version: materialVersion, leaseToken: materialLeaseToken, errorCode: 'generation_truncated', errorMessage: stillTruncated });
+        throw new Error('Resume generation truncated: ' + stillTruncated);
+      }
+    }
     // ── 4b. Deterministic gates + one bounded reviewer pass ──
     const sources = qualitySources(job, materials);
     quality = buildQualityReport({ resumeMd, coverMd, ...sources });
