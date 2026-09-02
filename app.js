@@ -752,11 +752,10 @@
   }
 
   /**
-   * Open materials in new tabs (resume + cover letter).
-   * /api/materials is no longer public, so ask /api/material-links for
-   * short-lived signed URLs first. The tabs are opened up front (while
-   * still inside the click handler) so popup blockers allow them, then
-   * pointed at the signed URLs once the server responds.
+   * Show the materials popup for a job: fetches short-lived signed URLs from
+   * /api/material-links (materials are not public), then presents the same
+   * options modal the generate flow uses — Markdown links, PDF links when
+   * rendered, and render status — so the user picks what to open.
    */
   async function viewMaterials(jobId) {
     if (!getToken()) {
@@ -765,9 +764,17 @@
       return;
     }
 
-    const resumeTab = window.open('', '_blank');
-    const coverTab = window.open('', '_blank');
-    showToast('Opening materials in new tabs…', 'info', 2000);
+    showModal('generate-modal');
+    $('modal-title').textContent = 'Materials';
+    $('modal-status').textContent = 'Signing material links…';
+    $('modal-status').style.display = 'block';
+    document.querySelector('.modal-spinner-wrap').style.display = 'flex';
+    $('modal-result').style.display = 'none';
+    $('modal-error').style.display = 'none';
+    $('btn-followup-modal').style.display = 'none';
+    $('quality-summary').textContent = '';
+    setPdfLinks({ pdf_state: 'pending', pdf_ready: false });
+    lastGeneratedJobId = String(jobId);
 
     try {
       const res = await fetch('/api/material-links', {
@@ -781,24 +788,19 @@
       if (!res.ok) {
         throw new Error(data.error || 'Could not sign material links (HTTP ' + res.status + ')');
       }
-      setPdfLinks(data.materials);
 
-      // Prefer the rendered PDFs — browsers display them inline, while the
-      // Markdown links download. Signed Markdown remains the fallback while
-      // a render is pending or has failed.
-      const pdfsReady = data.materials.pdf_ready === true &&
-        data.materials.pdf_state === 'available' &&
-        Boolean(data.materials.resume_pdf && data.materials.cover_letter_pdf);
-      const resumeUrl = pdfsReady ? data.materials.resume_pdf : data.materials.resume;
-      const coverUrl = pdfsReady ? data.materials.cover_letter_pdf : data.materials.cover_letter;
-      if (resumeTab && resumeUrl) resumeTab.location.href = resumeUrl; else if (resumeTab) resumeTab.close();
-      if (coverTab && coverUrl) coverTab.location.href = coverUrl; else if (coverTab) coverTab.close();
-      if (!coverTab) showToast('Cover letter tab was blocked — allow popups for this site.', 'error');
+      document.querySelector('.modal-spinner-wrap').style.display = 'none';
+      $('modal-status').style.display = 'none';
+      $('modal-result').style.display = 'block';
+      $('link-resume').href = data.materials.resume;
+      $('link-cover').href = data.materials.cover_letter;
+      setPdfLinks(data.materials);
     } catch (err) {
       console.error('viewMaterials error:', err);
-      if (resumeTab) resumeTab.close();
-      if (coverTab) coverTab.close();
-      showToast('Failed to open materials: ' + err.message, 'error');
+      document.querySelector('.modal-spinner-wrap').style.display = 'none';
+      $('modal-status').style.display = 'none';
+      $('modal-error').style.display = 'block';
+      $('modal-error-text').textContent = 'Failed to load materials: ' + err.message;
     }
   }
 
