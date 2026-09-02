@@ -33,7 +33,7 @@ export const RESUME_STANDARDS = `RESUME OUTPUT STANDARDS (ATS — applicant trac
   role). Do NOT fuse name and title with an em-dash or pipe.
 - Contact block in body text near the top (never a markdown table).
 - Section headers, exactly these standard names, in this order:
-  PROFESSIONAL SUMMARY, SKILLS, PROFESSIONAL EXPERIENCE, EDUCATION
+  PROFESSIONAL SUMMARY, SKILLS, WORK EXPERIENCE, EDUCATION
 - Reverse-chronological order. Dates as MM/YYYY consistently.
 - Bullets follow: action verb + what you did + how + quantified result.
 - SKILLS section mirrors the exact tools/phrasing of the job description.
