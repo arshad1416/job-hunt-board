@@ -146,8 +146,11 @@ export function hiringManagerName(jd) {
   return null;
 }
 
-/** Guarantee the salutation uses the extracted name when one exists. */
+/** Guarantee the salutation uses the resolved name when one exists, whatever
+ * greeting the model wrote (generic or a wrongly scraped name). */
 export function applySalutation(cover, name) {
   if (!name) return String(cover || '');
-  return String(cover || '').replace(/Dear\s+Hiring\s+Manager\s*,/i, 'Dear ' + name + ',');
+  return String(cover || '')
+    .replace(/Dear\s+Hiring\s+Manager\s*,/i, 'Dear ' + name + ',')
+    .replace(/Dear\s+[A-Z][A-Za-z.'-]*(?:\s+[A-Z][A-Za-z.'-]*)?\s*,/, 'Dear ' + name + ',');
 }

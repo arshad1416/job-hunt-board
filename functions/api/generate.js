@@ -837,8 +837,10 @@ async function runGenerate(context) {
   // mutates the application status.
   stepLog('jd_source', { source: jdSource });
   const reused = await tryReuseMaterials(env, job, jobId);
-  // Named greeting when the posting states one; recorded for traceability.
-  const hiringManager = hiringManagerName(jobDescriptionText(job) || job.description);
+  // Named greeting: the manually edited hiring_manager column wins; the
+  // posting text is the fallback. Recorded for traceability.
+  const manualHiringManager = String(job.hiring_manager || '').trim().slice(0, 80);
+  const hiringManager = manualHiringManager || hiringManagerName(jobDescriptionText(job) || job.description);
   stepLog('reuse_checked', { reused: !!reused });
   if (reused) {
     return json({
@@ -1000,6 +1002,7 @@ async function runGenerate(context) {
       // 'unavailable' — no usable JD; the prompt said so rather than guessing
       description_source: jdSource,
       hiring_manager: hiringManager || null,
+      hiring_manager_source: hiringManager ? (manualHiringManager ? 'manual' : 'posting') : null,
       description: jd,
       generated_at: new Date().toISOString(),
       // Deterministic quality gates (cv-gates) on the exact documents
