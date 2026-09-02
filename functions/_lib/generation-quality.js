@@ -106,3 +106,47 @@ export {
   sameEmployer,
   buildQualityReport,
 };
+
+/**
+ * Deterministic plain-language pass. Em-dashes are the most legible AI tell;
+ * the model is told not to use them, and this guarantees the stored Markdown
+ * has none regardless: a spaced em-dash between words becomes a comma (the
+ * safe general rewrite), any survivors are dropped. En-dashes in ranges
+ * (2020–2024) are legitimate typography and stay.
+ */
+export function plainLanguage(text) {
+  return String(text || '')
+    .replace(/[ \t]*—[ \t]*/g, ', ')
+    .replace(/(\w)—(\w)/g, '$1, $2')
+    .replace(/,\s*,/g, ',');
+}
+
+const NAME_SHAPE = /^[A-Z][a-zA-Z.'-]+(?:\s+[A-Z][a-zA-Z.'-]+)?$/;
+/**
+ * Best-effort hiring manager name from the posting body. Only confident
+ * shapes are accepted (one or two capitalized words); anything else returns
+ * null and the letter falls back to "Dear Hiring Manager,".
+ */
+export function hiringManagerName(jd) {
+  const text = String(jd || '');
+  if (!text) return null;
+  const patterns = [
+    /hiring manager[:\s]+([A-Z][a-zA-Z.'\-]+(?:\s+[A-Z][a-zA-Z.'\-]+)?)/i,
+    /(?:attention|attn\.?)[:\s]+([A-Z][a-zA-Z.'\-]+(?:\s+[A-Z][a-zA-Z.'\-]+)?)/i,
+    /(?:reports? to|reporting to)[:\s]+([A-Z][a-zA-Z.'\-]+(?:\s+[A-Z][a-zA-Z.'\-]+)?)/i,
+    /(?:contact|recruiter)[:\s]+([A-Z][a-zA-Z.'\-]+(?:\s+[A-Z][a-zA-Z.'\-]+)?)/i,
+  ];
+  const NON_PERSON = new Set(['The','Our','A','An','This','Team','Recruitment','Recruiting','Hiring','Talent','People','Canada','Canadian','Regional','National','Candidates','Applicants']);
+  for (const re of patterns) {
+    const m = text.match(re);
+    const name = m && m[1].trim();
+    if (name && NAME_SHAPE.test(name) && !NON_PERSON.has(name.split(' ')[0])) return name;
+  }
+  return null;
+}
+
+/** Guarantee the salutation uses the extracted name when one exists. */
+export function applySalutation(cover, name) {
+  if (!name) return String(cover || '');
+  return String(cover || '').replace(/Dear\s+Hiring\s+Manager\s*,/i, 'Dear ' + name + ',');
+}
