@@ -543,6 +543,7 @@
           <td><div class="asking-cell">${asking ? escapeHtml(asking) : '—'}</div></td>
           <td class="posted-cell">${escapeHtml(formatDate(posted))}</td>
           <td class="location-cell">${escapeHtml(job.location || '—')}</td>
+          <td class="hm-cell">${escapeHtml(job.hiring_manager || '—')}</td>
           <td>
             <div class="actions-cell">
               ${applyLink}

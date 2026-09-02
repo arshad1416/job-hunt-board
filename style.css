@@ -205,6 +205,8 @@ select { cursor: pointer; }
 .col-asking  { width: 110px; }
 .col-posted   { width: 70px; }
 .col-location { width: 120px; }
+.col-hm { width: 110px; }
+.hm-cell { font-size: 0.76rem; color: var(--text-secondary); }
 .col-actions  { width: 180px; }
 .col-applied  { width: 90px; text-align: center; }
 
@@ -275,6 +277,7 @@ select { cursor: pointer; }
 @media (max-width: 1023px) {
   .col-asking  { display: none; }
   .col-location { display: none; }
+  .col-hm { display: none; }
   thead th:nth-child(6), thead th:nth-child(8),
   tbody td:nth-child(6), tbody td:nth-child(8) { display: none; }
   .topbar { padding: 10px 14px; }
