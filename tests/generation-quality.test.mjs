@@ -181,3 +181,7 @@ test('plainLanguage normalizes the section heading to WORK EXPERIENCE', () => {
   assert.equal(plainLanguage('## PROFESSIONAL EXPERIENCE\n- Did A'), '## WORK EXPERIENCE\n- Did A');
   assert.equal(plainLanguage('## PROFESSIONAL SUMMARY\nText'), '## PROFESSIONAL SUMMARY\nText');
 });
+test('applySalutation replaces any opening greeting the model wrote', () => {
+  assert.equal(applySalutation('Dear BYD Canada Hiring Team,\n\nBody', 'Juliana Chavez'), 'Dear Juliana Chavez,\n\nBody');
+  assert.equal(applySalutation('Dear Sarah Chen,\n\nBody', 'Juliana Chavez'), 'Dear Juliana Chavez,\n\nBody');
+});

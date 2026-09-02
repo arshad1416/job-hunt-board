@@ -151,6 +151,5 @@ export function hiringManagerName(jd) {
 export function applySalutation(cover, name) {
   if (!name) return String(cover || '');
   return String(cover || '')
-    .replace(/Dear\s+Hiring\s+Manager\s*,/i, 'Dear ' + name + ',')
-    .replace(/Dear\s+[A-Z][A-Za-z.'-]*(?:\s+[A-Z][A-Za-z.'-]*)?\s*,/, 'Dear ' + name + ',');
+    .replace(/Dear\s+[^,\n]{1,80},/, 'Dear ' + name + ',');
 }
