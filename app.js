@@ -517,7 +517,7 @@
         : `<span class="title-text">${escapeHtml(job.title || 'Untitled')}</span>`;
 
       return `
-        <tr>
+        <tr data-job-id="${job.id}">
           <td class="rank-cell">${rank}</td>
           <td>
             <div class="score-cell">
@@ -799,6 +799,13 @@
       $('link-resume').href = data.materials.resume;
       $('link-cover').href = data.materials.cover_letter;
       setPdfLinks(data.materials);
+      // Keep the row's material-state label in sync with what the API just verified.
+      if (data.materials.pdf_ready === true && data.materials.pdf_state === 'available') {
+        const cached = allJobs.find(j => String(j.id) === String(jobId));
+        if (cached) cached.pdf_state = 'available';
+        const rowSpan = document.querySelector('tr[data-job-id="' + String(jobId).replace(/[^0-9]/g, '') + '"] .material-state');
+        if (rowSpan) rowSpan.textContent = 'PDFs available';
+      }
     } catch (err) {
       console.error('viewMaterials error:', err);
       document.querySelector('.modal-spinner-wrap').style.display = 'none';
