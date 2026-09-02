@@ -21,3 +21,15 @@ Cross-model review transcript for the locked implementation plan and final diff.
 - Accepted follow-up: `/api/status` now preserves `applied_at` when moving back to pre-pipeline statuses; a UTC timestamp regression test covers the shared helper.
 - Resolved after Qwen evidence review: UTF-8 Greenhouse decoding now uses `TextDecoder`; cached partial quality reports fail closed; legacy unapply preserves `applied_at` and rejects active-pipeline downgrades; status responses return canonical dates; sync deadline extraction uses the sanitized description/notes fallback; score rendering is bounded; provider scope is documented accurately; the reuse target is atomically claimed with a pre-pipeline status update before R2 writes.
 - Deferred: a dedicated source-of-truth/profile fallback redesign, a true lease/expiry for abandoned reservations, and stricter transition legality beyond the legacy endpoint guard. The atomic pre-pipeline claim plus second R2 `head()` addresses the concurrent overwrite scenario for active requests; abandoned-claim cleanup remains operational follow-up and does not block this branch's requested adoption scope.
+
+## Post-build inspection — render pipeline first-run fixes (2026-09-02)
+
+Fresh read-only Codex session (codex-cli 0.146.0, `gpt-5.6-luna`, thread 01a062cb-e118-71e1-aad1-4625744ff0e0) reviewed the uncommitted diff. Findings and dispositions:
+
+- Accepted (P1): preflight accepted `CHROMIUM_BIN` by presence alone. Now validated through the renderer's `--version` probe (`chromiumPath(env)`), so a configured-but-nonexistent binary fails preflight.
+- Accepted (P1): dry-run lock contention exited 0. `runWorker` now checks `pollRenderJobs` error before the dry-run early return and surfaces `infraError` for both modes; regression test added.
+- Accepted (P1): R2/Turso transport errors were persisted as job failures (burning attempts and exiting 0). `processRenderJob` now classifies known document/gate defects (`JOB_FAILURE_CODES`) as job failures and everything else as `infra_error`, which makes the CLI exit nonzero without consuming an attempt; tests added.
+- Accepted (P2): `R2_ENDPOINT` validated by `https://` prefix only; now parsed with `new URL` requiring an https protocol and hostname, matching the SigV4 client's own parsing.
+- Partially accepted (P2): coverage gaps. Seeded renderer-failure path already existed at the `processRenderJob` level; the `runWorker` failure test now seeds sources so the renderer actually runs. Upload-failure tests were re-expectationed to `infra_error` — the correct classification for transport faults — while still asserting staged-PDF rollback.
+
+Round 1 of MAX_INSPECTION_ROUNDS=2; no findings remained after fixes, so no reinspection round was spent. Full suite 131/131.

@@ -96,6 +96,25 @@ CORS is pinned to the allow-list above; an unrecognised `Origin` receives no `Ac
 
 If `DASHBOARD_AUTH_TOKEN` is unset on the server, every non-public route fails closed with `503` rather than opening up.
 
+### R2 S3 credentials for the Pi render worker
+
+The PDF render worker (`scripts/render-jobs.mjs --execute`) uploads to the same `job-hunt-materials` bucket via the R2 S3-compatible API — it never uses the Pages binding. Create one token:
+
+1. Cloudflare Dashboard → **R2** → **Manage API Tokens** → **Create API Token**
+2. Permissions: **Object Read & Write**, scoped to the single bucket `job-hunt-materials`
+3. Copy the **Access Key ID**, **Secret Access Key**, and the S3 endpoint (`https://<account-id>.r2.cloudflarestorage.com`)
+
+Export on the Pi (do not write these into the repo):
+
+```bash
+export R2_ENDPOINT="https://<account-id>.r2.cloudflarestorage.com"
+export R2_ACCESS_KEY_ID="..."
+export R2_SECRET_ACCESS_KEY="..."
+export R2_BUCKET="job-hunt-materials"
+```
+
+`node scripts/preflight.mjs --json` validates all four plus Chromium and Poppler before any run.
+
 ### Turso
 
 - **Endpoint:** `https://morning-briefing-arshad1416.aws-us-east-1.turso.io/v2/pipeline`
