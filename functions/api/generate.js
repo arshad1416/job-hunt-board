@@ -49,6 +49,7 @@ import {
   MAX_REVIEW_DOCUMENT_CHARS,
   cleanDocument,
   parseReviewerResponse,
+  parseReviewerSections,
   qualityRank,
   reusableQuality,
   closestReusableJob,
@@ -77,8 +78,10 @@ const JD_FETCH_TIMEOUT_MS = 10000;
 /** Budget for one Opus 5 generation call (two run in parallel). */
 const LLM_TIMEOUT_MS = 120000;
 
-/** One reviewer pass is enough; deterministic gates decide whether to keep it. */
-const REVIEW_MAX_TOKENS = 3500;
+/** One reviewer pass is enough; deterministic gates decide whether to keep it.
+ * Both rewritten documents are returned, so the cap must fit them in full —
+ * 3500 truncated the response mid-document and made every pass unparseable. */
+const REVIEW_MAX_TOKENS = 9000;
 
 /** Reviewer rewrites JSON; a low temperature keeps it conservative. */
 const REVIEW_TEMPERATURE = 0.2;
@@ -430,8 +433,17 @@ function reviewerPrompt(job, materials, resumeMd, coverMd) {
 Rewrite BOTH documents below so they strictly satisfy the standards.
 Ground every claim in the candidate sources. Never fabricate. Keep the
 same Markdown conventions (no tables, no links, no images). Return ONLY
-a JSON object, no prose, exactly this shape:
-{"resume": "<full rewritten resume markdown>", "cover_letter": "<full rewritten cover letter markdown>", "assessment": "<one short paragraph of what you changed and why>"}
+the rewritten documents, each wrapped in its exact delimiters on their
+own lines, with no prose outside the delimiters:
+<<<RESUME
+(full rewritten resume markdown)
+>>>
+<<<COVER_LETTER
+(full rewritten cover letter markdown)
+>>>
+<<<ASSESSMENT
+(one short paragraph of what you changed and why)
+>>>
 
 ${MISSION}
 
@@ -453,7 +465,7 @@ DRAFT COVER LETTER:
 ${clip(coverMd)}
 """
 
-Begin JSON:`;
+Begin:`;
 }
 
 function repairPrompt(job, materials, resumeMd, report) {
@@ -506,7 +518,7 @@ async function runReviewer(env, job, materials, resumeMd, coverMd, sources) {
       maxTokens: REVIEW_MAX_TOKENS,
       temperature: REVIEW_TEMPERATURE,
     });
-    const parsed = parseReviewerResponse(raw);
+    const parsed = parseReviewerSections(raw) || parseReviewerResponse(raw);
     const resume = cleanDocument(parsed && parsed.resume);
     const cover = cleanDocument(parsed && parsed.cover_letter);
     if (!resume || !cover) return null;
@@ -1080,7 +1092,9 @@ async function runGenerate(context) {
       ats_score: quality.ats.score,
       ats_pass: quality.atsPass,
       facts_ok: quality.facts.ok,
-      keyword_coverage: quality.keywordCoverage
+      keyword_coverage: quality.keywordCoverage,
+      reviewer_used: reviewerMeta.used === true || reviewerMeta.reason === 'quality_rank_not_improved',
+      reviewer_note: reviewerMeta.used ? null : String(reviewerMeta.reason || 'skipped')
     }
   });
 }

@@ -45,3 +45,12 @@ Canary job 10180 on production Turso/R2/Pi. Three first-contact defects found an
 Also fixed during first-run prep: `DASHBOARD_AUTH_TOKEN` was rotated (the old value is no longer valid; the browser must re-enter it once); an old material version for 10180 predating contact-field extraction is permanently unrenderable and its render job was made terminal.
 
 Canary result: generate → render_jobs enqueue → Pi render (2-page resume, 1-page cover letter, gates green) → R2 upload with recorded SHA-256/bytes → signed links report `pdf_state: available` → verified download with `private, no-store` and clean text extraction. 133/133 tests green.
+
+## Reviewer-pass restoration — Codex inspection (2026-09-02, round 1 of 2)
+
+Fresh read-only Codex session (gpt-5.6-luna, thread 01a06378-78a8-79e1-ba6e-ed25cebbd7fa) reviewed the diff before merge.
+- Accepted (P1): leftover `Begin JSON:` prompt tail removed (it could steer the model back to the truncating JSON protocol); max_tokens now 9000 with delimited `<<<RESUME … >>>` sections and a tolerant parser.
+- Accepted (P2): header strip now removes the contact block (not just the H1) across the pre-heading region, keeps subtitles/prose, and treats linkedin/github lines as contact only when short and punctuation-free; regression tests added for subtitle retention and GitHub-mention prose.
+- Accepted (P2): `reviewer_used` now means the review ran (adopted or rank-rejected); UI distinguishes "LLM-reviewed" / "ran, kept original" / "skipped (reason)" and omits the clause entirely on cached responses.
+- Deferred (P1): wiring the PDF renderer revision into material_versions invalidation so existing current materials re-render automatically. The renderer revision is bumped (v3→v4) and new generations pick it up, but a version-invalidation pass for existing pointers is a design change tracked as follow-up; the canary material is regenerated manually in this session.
+Full suite 140/140 after fixes.

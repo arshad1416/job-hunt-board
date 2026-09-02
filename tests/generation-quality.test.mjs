@@ -138,4 +138,20 @@ test('buildQualityReport flags fabricated claims and passes grounded ones', () =
   assert.equal(bad.facts.ok, false);
   assert.ok(bad.facts.violations.length >= 1);
   assert.ok(qualityRank(good) > qualityRank(bad));
+});import { parseReviewerSections } from '../functions/_lib/generation-quality.js';
+test('parseReviewerSections extracts delimited documents', () => {
+  const raw = '<<<RESUME\n# Ada\nBuilt things.\n>>>\n<<<COVER_LETTER\nDear team,\n>>>\n<<<ASSESSMENT\nTightened bullets.\n>>>';
+  const parsed = parseReviewerSections(raw);
+  assert.equal(parsed.resume, '# Ada\nBuilt things.');
+  assert.equal(parsed.cover_letter, 'Dear team,');
+  assert.equal(parsed.assessment, 'Tightened bullets.');
+});
+test('parseReviewerSections tolerates chatty wrappers and CRLF, rejects missing sections', () => {
+  const raw = 'Here you go:\r\n<<<RESUME\r\nResume body\r\n>>>\r\n<<<COVER_LETTER\r\nCover body\r\n>>> thanks';
+  const parsed = parseReviewerSections(raw);
+  assert.equal(parsed.resume, 'Resume body');
+  assert.equal(parsed.cover_letter, 'Cover body');
+  assert.equal(parsed.assessment, '');
+  assert.equal(parseReviewerSections('<<<RESUME\nonly one\n>>>'), null);
+  assert.equal(parseReviewerSections('no delimiters at all'), null);
 });

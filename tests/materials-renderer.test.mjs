@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {safeMarkdown,renderMaterials,hardGates,renderPdf} from '../scripts/materials-renderer.mjs';
+import {safeMarkdown,renderMaterials,hardGates,renderPdf,loadTemplates} from '../scripts/materials-renderer.mjs';
 const t={resume:'{{name}} {{email}} {{phone}} {{location}} {{resume}}',cover:'{{name}} {{cover}}'};
 const fixture=()=>JSON.parse(fs.readFileSync('tests/fixtures/materials/short.json'));
 test('rendering, escaping, deterministic revisions',()=>{const d=fixture(),a=renderMaterials(d,t),b=renderMaterials(d,t);assert.equal(a.revision,b.revision);assert.doesNotMatch(a.resume,/{{/);assert.match(a.resume,/&amp;/);d.resume.markdown+=' changed';assert.notEqual(renderMaterials(d,t).revision,a.revision);});
@@ -14,3 +14,6 @@ test('fake PDF runner, unavailable browser, atomic preservation',()=>{const dir=
 // ends with one); those are extraction artifacts, not font tofu. The first
 // live canary failed every PDF on this exact character.
 test('pdftotext form-feed page separators do not trip the tofu gate',()=>{const page='Arshad Kazi did the work.\n';assert.equal(hardGates({type:'resume',text:page+'\f'+page,pages:2,networkRequests:0}).ok,true);assert.equal(hardGates({type:'cover_letter',text:page+'\f',pages:1,networkRequests:0}).ok,true);assert.equal(hardGates({type:'resume',text:page+'\f'+'real \uFFFD tofu',pages:2,networkRequests:0}).ok,false);});
+test('duplicate name/contact header in markdown is stripped from the resume projection',()=>{const t=loadTemplates();const md='# Arshad Kazi\n**Regional Sales Manager**\n\nWaterdown, ON | 416-316-9864 | arshad@arshadkazi.ca\nlinkedin.com/in/arshadkazi1\n\n---\n\n## EXPERIENCE\n- Did A\n';const out=renderMaterials({name:'Arshad Kazi',email:'arshad@arshadkazi.ca',phone:'416-316-9864',location:'Waterdown, ON',resume:{markdown:md},coverLetter:{markdown:'Dear team,'}},t);const text=out.resume;assert.equal((text.match(/Arshad Kazi/g)||[]).length,1,'template header only');assert.doesNotMatch(text,/linkedin\.com/);assert.equal((text.match(/416-316-9864/g)||[]).length,1,'template contact line only');assert.match(text,/Regional Sales Manager/);assert.match(text,/EXPERIENCE/);assert.match(text,/Did A/);});
+test('non-matching leading H1 is preserved',()=>{const t=loadTemplates();const md='# Someone Else Entirely\n\n## Summary\n- Did B\n';const out=renderMaterials({name:'Arshad Kazi',email:'a@x.test',phone:'555',location:'X',resume:{markdown:md},coverLetter:{markdown:'Dear,'}},t);assert.match(out.resume,/Someone Else Entirely/);});
+test('prose mentioning GitHub and normal summary lines survive the strip',()=>{const t=loadTemplates();const md='# Arshad Kazi\n\nAutomotive leader who shipped tools on GitHub for the dealer network.\n\n## SUMMARY\n- Did C\n';const out=renderMaterials({name:'Arshad Kazi',email:'a@x.test',phone:'5555555555',location:'Toronto, ON',resume:{markdown:md},coverLetter:{markdown:'Dear,'}},t);assert.match(out.resume,/GitHub for the dealer network/);assert.match(out.resume,/SUMMARY/);});
