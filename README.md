@@ -10,7 +10,7 @@ A single-page job hunt dashboard deployed on **Cloudflare Pages** that renders a
 
 ## Task 4 materials delivery
 
-Apply migration `003_material_lifecycle.sql` first; 007 is a documentation contract for existing installations, applied with `node scripts/upgrade-material-schema.mjs --commit` (default is dry-run). On the Pi, verify with `node scripts/render-jobs.mjs --dry-run --limit 10`; production runs `node scripts/render-jobs.mjs --limit 10`. The worker uses a lock, stale-lease recovery, bounded retries, and rollback. Signed URLs are private/no-store and bind job, exact filename, version, and expiry. Only verified legacy Markdown is supported; PDFs require versioned readiness. Failed jobs recover through bounded retries. No production canary has been run.
+Apply migration `003_material_lifecycle.sql` first; 007 is a documentation contract for existing installations, applied with `node scripts/upgrade-material-schema.mjs --commit` (default is dry-run). On the Pi, verify with `node scripts/render-jobs.mjs --dry-run --limit 10`; production runs `node scripts/render-jobs.mjs --limit 10`. The worker uses a lock, stale-lease recovery, bounded retries, and rollback. Signed URLs are private/no-store and bind job, exact filename, version, and expiry. Only verified legacy Markdown is supported; PDFs require versioned readiness. Failed jobs recover through bounded retries. **Production canary completed 2026-09-02** (job 10180): generated → enqueued → rendered on the Pi (2-page resume, 1-page cover letter, gates green) → uploaded to R2 → signed PDF links report `pdf_state: available` and download with `private, no-store`. The Pi runs the worker hourly at :20 via crontab from a dedicated `~/job-hunt-render` worktree on `master` (skipping the 09:00 ingestion hour; pull the worktree after merging code changes).
 
 ## How It Works
 
@@ -95,6 +95,25 @@ Signed links are HMAC-SHA256 over `v1:<job_id>:<version-or->:<filename>:<exp>` (
 CORS is pinned to the allow-list above; an unrecognised `Origin` receives no `Access-Control-Allow-Origin` header at all. Responses carry `Vary: Origin`. Material responses are served `private, no-store` with `nosniff` and `X-Robots-Tag: noindex`.
 
 If `DASHBOARD_AUTH_TOKEN` is unset on the server, every non-public route fails closed with `503` rather than opening up.
+
+### R2 S3 credentials for the Pi render worker
+
+The PDF render worker (`scripts/render-jobs.mjs --execute`) uploads to the same `job-hunt-materials` bucket via the R2 S3-compatible API — it never uses the Pages binding. Create one token:
+
+1. Cloudflare Dashboard → **R2** → **Manage API Tokens** → **Create API Token**
+2. Permissions: **Object Read & Write**, scoped to the single bucket `job-hunt-materials`
+3. Copy the **Access Key ID**, **Secret Access Key**, and the S3 endpoint (`https://<account-id>.r2.cloudflarestorage.com`)
+
+Export on the Pi (do not write these into the repo):
+
+```bash
+export R2_ENDPOINT="https://<account-id>.r2.cloudflarestorage.com"
+export R2_ACCESS_KEY_ID="..."
+export R2_SECRET_ACCESS_KEY="..."
+export R2_BUCKET="job-hunt-materials"
+```
+
+`node scripts/preflight.mjs --json` validates all four plus Chromium and Poppler before any run.
 
 ### Turso
 
@@ -355,4 +374,4 @@ Personal project — Arshad Kazi. Not for redistribution.
 
 ## Task 4 status
 
-The standalone `scripts/render-jobs.mjs` CLI polls safely by default (`--dry-run`) and supports guarded production rendering with `--execute --limit N` when Turso, R2 S3 credentials, and local Chromium are configured. It renders fixed local templates, validates PDF gates, and fails closed on missing inputs or renderer dependencies. No production canary has been run.
+The standalone `scripts/render-jobs.mjs` CLI polls safely by default (`--dry-run`) and supports guarded production rendering with `--execute --limit N` when Turso, R2 S3 credentials, and local Chromium are configured. It renders fixed local templates, validates PDF gates, and fails closed on missing inputs or renderer dependencies. First production canary ran 2026-09-02 (job 10180, both PDFs delivered and verified).
