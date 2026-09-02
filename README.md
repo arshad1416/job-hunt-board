@@ -10,7 +10,7 @@ A single-page job hunt dashboard deployed on **Cloudflare Pages** that renders a
 
 ## Task 4 materials delivery
 
-Apply migration `003_material_lifecycle.sql` first; 007 is a documentation contract for existing installations, applied with `node scripts/upgrade-material-schema.mjs --commit` (default is dry-run). On the Pi, verify with `node scripts/render-jobs.mjs --dry-run --limit 10`; production runs `node scripts/render-jobs.mjs --limit 10`. The worker uses a lock, stale-lease recovery, bounded retries, and rollback. Signed URLs are private/no-store and bind job, exact filename, version, and expiry. Only verified legacy Markdown is supported; PDFs require versioned readiness. Failed jobs recover through bounded retries. No production canary has been run.
+Apply migration `003_material_lifecycle.sql` first; 007 is a documentation contract for existing installations, applied with `node scripts/upgrade-material-schema.mjs --commit` (default is dry-run). On the Pi, verify with `node scripts/render-jobs.mjs --dry-run --limit 10`; production runs `node scripts/render-jobs.mjs --limit 10`. The worker uses a lock, stale-lease recovery, bounded retries, and rollback. Signed URLs are private/no-store and bind job, exact filename, version, and expiry. Only verified legacy Markdown is supported; PDFs require versioned readiness. Failed jobs recover through bounded retries. **Production canary completed 2026-09-02** (job 10180): generated → enqueued → rendered on the Pi (2-page resume, 1-page cover letter, gates green) → uploaded to R2 → signed PDF links report `pdf_state: available` and download with `private, no-store`. The Pi runs the worker hourly at :20 via crontab from a dedicated `~/job-hunt-render` worktree on `master` (skipping the 09:00 ingestion hour; pull the worktree after merging code changes).
 
 ## How It Works
 
@@ -374,4 +374,4 @@ Personal project — Arshad Kazi. Not for redistribution.
 
 ## Task 4 status
 
-The standalone `scripts/render-jobs.mjs` CLI polls safely by default (`--dry-run`) and supports guarded production rendering with `--execute --limit N` when Turso, R2 S3 credentials, and local Chromium are configured. It renders fixed local templates, validates PDF gates, and fails closed on missing inputs or renderer dependencies. No production canary has been run.
+The standalone `scripts/render-jobs.mjs` CLI polls safely by default (`--dry-run`) and supports guarded production rendering with `--execute --limit N` when Turso, R2 S3 credentials, and local Chromium are configured. It renders fixed local templates, validates PDF gates, and fails closed on missing inputs or renderer dependencies. First production canary ran 2026-09-02 (job 10180, both PDFs delivered and verified).
