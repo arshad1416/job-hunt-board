@@ -26,7 +26,7 @@ globalThis.fetch = async (url, options = {}) => {
     // Anchor to the UPDATE only: the getCurrentMaterial SELECT also contains state='succeeded'.
     if (/^UPDATE material_versions SET state='succeeded'/i.test(sql)) { state.artifactPrefix = args[0]?.value; state.currentVersion = args[2]?.value; }
     if (/INSERT INTO material_current/i.test(sql)) { state.currentVersion = args[1]?.value; state.currentInserted = true; }
-    if (/SELECT mv\.\* FROM material_current/i.test(sql) && state.currentInserted && state.currentVersion) { cols = ['id', 'version', 'artifact_prefix']; rows = [[{type:'integer',value:'1'},{type:'text',value:state.currentVersion},{type:'text',value:state.artifactPrefix}]]; } else if (/SELECT \* FROM applications/i.test(sql)) { cols = ['id','title','company','description','track','location','salary','url']; rows = [[{type:'integer',value:'123'},{type:'text',value:'Software Engineer'},{type:'text',value:'Acme'},{type:'text',value:'Build JavaScript and TypeScript applications and APIs with React, Node.js, SQL, testing, and accessibility.'},{type:'text',value:'engineering'},{type:'text',value:'Remote'},{type:'text',value:'100000'},{type:'null'}]]; } else if (!/material_current/i.test(sql) && /SELECT .*material_versions/i.test(sql)) { cols = ['id']; rows = [[{type:'integer',value:'1'}]]; }
+    if (/SELECT mv\.\* FROM material_current/i.test(sql) && state.currentInserted && state.currentVersion) { cols = ['id', 'version', 'artifact_prefix']; rows = [[{type:'integer',value:'1'},{type:'text',value:state.currentVersion},{type:'text',value:state.artifactPrefix}]]; } else if (/SELECT \* FROM applications/i.test(sql)) { cols = ['id','title','company','description','track','location','salary','url','hiring_manager']; rows = [[{type:'integer',value:'123'},{type:'text',value:'Software Engineer'},{type:'text',value:'Acme'},{type:'text',value:'Build JavaScript and TypeScript applications and APIs with React, Node.js, SQL, testing, and accessibility.'},{type:'text',value:'engineering'},{type:'text',value:'Remote'},{type:'text',value:'100000'},{type:'null'},{type:'text',value:'Sarah Chen'}]]; } else if (!/material_current/i.test(sql) && /SELECT .*material_versions/i.test(sql)) { cols = ['id']; rows = [[{type:'integer',value:'1'}]]; }
     const write = /INSERT INTO material_versions|UPDATE material_versions|INSERT INTO render_jobs|INSERT INTO material_current|UPDATE material_current/i.test(sql);
     return Response.json({ results: [{ type: 'ok', response: { result: { cols: write ? [] : cols.map(name => ({name})), rows, affected_row_count: write ? 1 : 0 } } }] });
   }
@@ -50,4 +50,8 @@ test('generate handler stages and succeeds end-to-end', async () => {
   assert.ok(calls.some(sql => /UPDATE material_versions/i.test(sql)));
   assert.ok(calls.some(sql => /UPDATE material_versions/i.test(sql) && /succeeded/i.test(sql)));
   assert.equal(body.quality.reviewer_used, true);
+  const details = JSON.parse(store.get(staged.find(k => k.endsWith('/job_details.json'))) || '{}');
+  assert.equal(details.hiring_manager, 'Sarah Chen');
+  assert.equal(details.hiring_manager_source, 'manual');
+  assert.match(store.get(staged.find(k => k.endsWith('/cover_letter.md'))) || '', /Dear Sarah Chen,/);
 });

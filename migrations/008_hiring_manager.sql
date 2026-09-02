@@ -1,0 +1,4 @@
+-- 008_hiring_manager.sql
+-- Additive, nullable, manually editable column. NULL means "not recorded";
+-- generation falls back to extracting the name from the posting text.
+-- ALTER TABLE applications ADD COLUMN hiring_manager TEXT;
