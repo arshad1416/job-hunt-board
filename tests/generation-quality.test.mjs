@@ -155,3 +155,25 @@ test('parseReviewerSections tolerates chatty wrappers and CRLF, rejects missing 
   assert.equal(parseReviewerSections('<<<RESUME\nonly one\n>>>'), null);
   assert.equal(parseReviewerSections('no delimiters at all'), null);
 });
+import { plainLanguage, hiringManagerName, applySalutation } from '../functions/_lib/generation-quality.js';
+test('plainLanguage removes em-dashes, preserves en-dash ranges', () => {
+  assert.equal(plainLanguage('Regional Sales Manager — Dealer Network Development'), 'Regional Sales Manager, Dealer Network Development');
+  assert.equal(plainLanguage('a — b — c'), 'a, b, c');
+  assert.equal(plainLanguage('word—word'), 'word, word');
+  assert.equal(plainLanguage('2020–2024 and 2020 - 2024'), '2020–2024 and 2020 - 2024');
+  assert.equal(plainLanguage('no dashes here'), 'no dashes here');
+  assert.equal(plainLanguage('a, — b'), 'a, b');
+});
+test('hiringManagerName extracts confident names only', () => {
+  assert.equal(hiringManagerName('Hiring Manager: Sarah Chen'), 'Sarah Chen');
+  assert.equal(hiringManagerName('Attention: J. Smith'), 'J. Smith');
+  assert.equal(hiringManagerName('You will report to Maria Lopez in Toronto.'), 'Maria Lopez');
+  assert.equal(hiringManagerName('contact our recruitment team for details'), null);
+  assert.equal(hiringManagerName('Hiring Manager: The Regional Sales Team'), null);
+  assert.equal(hiringManagerName(''), null);
+});
+test('applySalutation swaps the generic greeting only when a name exists', () => {
+  assert.equal(applySalutation('Dear Hiring Manager,\n\nBody', 'Sarah Chen'), 'Dear Sarah Chen,\n\nBody');
+  assert.equal(applySalutation('Dear hiring manager, body', 'Sarah Chen'), 'Dear Sarah Chen, body');
+  assert.equal(applySalutation('Dear Hiring Manager,\n\nBody', null), 'Dear Hiring Manager,\n\nBody');
+});

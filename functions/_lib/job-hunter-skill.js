@@ -40,7 +40,13 @@ export const RESUME_STANDARDS = `RESUME OUTPUT STANDARDS (ATS — applicant trac
 - Single-column conventions in Markdown: '##' sections, '###' job entries,
   '-' bullets, '**' bold — NO tables, NO links, NO images (the output is
   converted to styled .docx by the job-hunter converter afterwards).
-- One page when converted. Ruthlessly concise.`;
+- One page when converted. Ruthlessly concise.
+- PLAIN-LANGUAGE RULES (AI-tell scrubbing, deterministic pass enforces them):
+  NO em-dashes anywhere (use a comma, colon, or separate sentence; the
+  pipeline rewrites any that slip through). Write like a human briefing a
+  colleague: plain verbs, no "delve", "leverage", "spearheaded",
+  "passionate about", "proven track record", "dynamic", "seamless",
+  "robust", "utilize" (use "use"). Vary sentence and bullet length.`;
 
 /** Cover letter structure the skill mandates. */
 export const COVER_LETTER_STANDARDS = `COVER LETTER STANDARDS:
@@ -49,5 +55,9 @@ export const COVER_LETTER_STANDARDS = `COVER LETTER STANDARDS:
   2. One key achievement with metrics, matched to the posting's core need
   3. The differentiator — what makes this candidate unusual for THIS role
   4. Call to action + professional closing
-- Same voice as the resume. Markdown-lite only ('**' bold allowed, no
+- Same voice as the resume. PLAIN-LANGUAGE RULES as the resume: no
+  em-dashes, no AI-tell vocabulary; short human sentences.
+- Salutation: if a HIRING MANAGER NAME is supplied, open "Dear <name>,"
+  exactly. Otherwise "Dear Hiring Manager,".
+- Markdown-lite only ('**' bold allowed, no
   links, no tables) so the job-hunter converter can produce the .docx.`;
