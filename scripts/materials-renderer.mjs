@@ -19,7 +19,7 @@ export function stripDuplicateHeader(markdown,name,email='',phone='',location=''
 // region becomes empty, drop it and a trailing separator line too.
 let end=i+1;while(end<lines.length&&!/^#{2,6}\s/.test(lines[end].trim()))end++;
 const kept=[];for(let k=i+1;k<end;k++){if(!contactLike(lines[k].trim()))kept.push(lines[k])}
-if(kept.some(l=>l.trim())){lines.splice(i,end-i,...kept);return lines.join('\n')}
+if(kept.some(l=>l.trim())){lines.splice(i,end-i,...kept);if(/^\s*(-{3,}|\*{3,})\s*$/.test(lines[i+kept.length]||''))lines.splice(i+kept.length,1);return lines.join('\n')}
 let stop=end;if(lines[stop]&&/^\s*(-{3,}|\*{3,})\s*$/.test(lines[stop]))stop++;
 lines.splice(i,stop-i);return lines.join('\n')}
 function req(v,n){if(typeof v!=='string'||!v.trim()||v.length>MAX)throw Error('invalid '+n);return v}
