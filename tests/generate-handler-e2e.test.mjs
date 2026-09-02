@@ -31,7 +31,9 @@ globalThis.fetch = async (url, options = {}) => {
     return Response.json({ results: [{ type: 'ok', response: { result: { cols: write ? [] : cols.map(name => ({name})), rows, affected_row_count: write ? 1 : 0 } } }] });
   }
   const body = JSON.parse(options.body); const prompt = body.messages?.[0]?.content || '';
-  const content = /exactly this shape/i.test(prompt) ? JSON.stringify({ resume, cover_letter: cover, assessment: 'Kept sourced skills.' }) : (/cover letter/i.test(prompt) ? cover : resume);
+  const content = /ruthless senior resume reviewer/i.test(prompt)
+    ? '<<<RESUME\n' + resume + '\n>>>\n<<<COVER_LETTER\n' + cover + '\n>>>\n<<<ASSESSMENT\nKept sourced skills.\n>>>'
+    : (/cover letter/i.test(prompt) ? cover : resume);
   return Response.json({ choices: [{ message: { content } }] });
 };
 after(() => { globalThis.fetch = originalFetch; });
@@ -47,4 +49,5 @@ test('generate handler stages and succeeds end-to-end', async () => {
   assert.deepEqual(new Set(staged.map(k => k.split('/').pop())), new Set(['resume.md', 'cover_letter.md', 'job_details.json', 'manifest.json']));
   assert.ok(calls.some(sql => /UPDATE material_versions/i.test(sql)));
   assert.ok(calls.some(sql => /UPDATE material_versions/i.test(sql) && /succeeded/i.test(sql)));
+  assert.equal(body.quality.reviewer_used, true);
 });

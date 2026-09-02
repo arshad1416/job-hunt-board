@@ -17,13 +17,32 @@ function cleanDocument(value) {
 function parseReviewerResponse(value) {
   const text = String(value || '').trim()
     .replace(/^```(?:json)?\s*/i, '')
-    .replace(/\s*```$/i, '')
+    .replace(/\s*```\s*$/i, '')
     .trim();
   try { return JSON.parse(text); } catch {}
   const start = text.indexOf('{');
   const end = text.lastIndexOf('}');
   if (start < 0 || end <= start) return null;
   try { return JSON.parse(text.slice(start, end + 1)); } catch { return null; }
+}
+
+/**
+ * Parse the delimited reviewer protocol: each rewritten document wrapped in
+ * <<<NAME ... >>> markers. A full resume + cover letter JSON-escaped inside
+ * one object exceeded the token cap and truncated mid-string, which made
+ * every reviewer pass unparseable; plain delimited markdown has no such
+ * ceiling. Returns null unless both documents are present.
+ */
+export function parseReviewerSections(value) {
+  const text = String(value || '');
+  const grab = (name) => {
+    const match = text.match(new RegExp('<<<' + name + '\\s*\\r?\\n?([\\s\\S]*?)>>>', 'i'));
+    return match ? match[1].trim() : null;
+  };
+  const resume = grab('RESUME');
+  const cover = grab('COVER_LETTER');
+  if (!resume || !cover) return null;
+  return { resume, cover_letter: cover, assessment: grab('ASSESSMENT') || '' };
 }
 
 /** Rank reports so an LLM revision cannot silently regress grounding. */

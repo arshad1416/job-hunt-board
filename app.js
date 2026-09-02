@@ -319,7 +319,11 @@
     const q = quality || {};
     $('quality-summary').textContent = 'ATS ' + (q.ats_score ?? '—') + '/100 · ' +
       (q.facts_ok !== false ? 'facts grounded' : 'fact review needed') +
-      (q.keyword_coverage ? ' · keywords checked' : '');
+      (q.keyword_coverage ? ' · keywords checked' : '') +
+      (q.ats_score === undefined ? '' :
+        q.reviewer_used === true
+          ? (q.reviewer_note ? ' · LLM review ran, kept original (' + q.reviewer_note + ')' : ' · LLM-reviewed')
+          : ' · LLM review skipped' + (q.reviewer_note ? ' (' + q.reviewer_note + ')' : ''));
     const job = allJobs.find(j => String(j.id) === String(jobId));
     const followupButton = $('btn-followup-modal');
     followupButton.style.display = job && FOLLOW_UP_ELIGIBLE.has(normalizeStatus(job.status)) ? 'inline-flex' : 'none';
