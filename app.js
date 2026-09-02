@@ -783,10 +783,17 @@
       }
       setPdfLinks(data.materials);
 
-      if (resumeTab && data.materials.resume) resumeTab.location.href = data.materials.resume; else if (resumeTab) resumeTab.close();
-      if (coverTab && data.materials.cover_letter) coverTab.location.href = data.materials.cover_letter; else if (coverTab) coverTab.close();
-      // PDF links are intentionally omitted until the API reports available.
-      // PDF controls remain hidden unless the API returns signed URLs.
+      // Prefer the rendered PDFs — browsers display them inline, while the
+      // Markdown links download. Signed Markdown remains the fallback while
+      // a render is pending or has failed.
+      const pdfsReady = data.materials.pdf_ready === true &&
+        data.materials.pdf_state === 'available' &&
+        Boolean(data.materials.resume_pdf && data.materials.cover_letter_pdf);
+      const resumeUrl = pdfsReady ? data.materials.resume_pdf : data.materials.resume;
+      const coverUrl = pdfsReady ? data.materials.cover_letter_pdf : data.materials.cover_letter;
+      if (resumeTab && resumeUrl) resumeTab.location.href = resumeUrl; else if (resumeTab) resumeTab.close();
+      if (coverTab && coverUrl) coverTab.location.href = coverUrl; else if (coverTab) coverTab.close();
+      if (!coverTab) showToast('Cover letter tab was blocked — allow popups for this site.', 'error');
     } catch (err) {
       console.error('viewMaterials error:', err);
       if (resumeTab) resumeTab.close();
