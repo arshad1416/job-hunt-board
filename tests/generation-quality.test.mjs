@@ -185,3 +185,16 @@ test('applySalutation replaces any opening greeting the model wrote', () => {
   assert.equal(applySalutation('Dear BYD Canada Hiring Team,\n\nBody', 'Juliana Chavez'), 'Dear Juliana Chavez,\n\nBody');
   assert.equal(applySalutation('Dear Sarah Chen,\n\nBody', 'Juliana Chavez'), 'Dear Juliana Chavez,\n\nBody');
 });
+
+test('truncation detector contract: missing trailing sections flag, complete docs pass', () => {
+  const detect = (md) => {
+    for (const section of ['SUMMARY', 'SKILLS', 'EXPERIENCE', 'EDUCATION']) {
+      if (!new RegExp('^#{1,4}\\s+.*' + section, 'im').test(String(md || ''))) return 'missing ' + section;
+    }
+    return null;
+  };
+  const truncated = '# Arshad Kazi\n\n## PROFESSIONAL SUMMARY\nText\n\n## SKILLS\n- A\n\n## WORK EXPERIENCE\n### Tesla\n- Acted as primary liaison to the Ontario Minist';
+  assert.match(detect(truncated), /missing EDUCATION/);
+  const complete = truncated + '\n\n## EDUCATION\nBachelor of Computer Science';
+  assert.equal(detect(complete), null);
+});
