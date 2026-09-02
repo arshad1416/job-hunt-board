@@ -177,3 +177,7 @@ test('applySalutation swaps the generic greeting only when a name exists', () =>
   assert.equal(applySalutation('Dear hiring manager, body', 'Sarah Chen'), 'Dear Sarah Chen, body');
   assert.equal(applySalutation('Dear Hiring Manager,\n\nBody', null), 'Dear Hiring Manager,\n\nBody');
 });
+test('plainLanguage normalizes the section heading to WORK EXPERIENCE', () => {
+  assert.equal(plainLanguage('## PROFESSIONAL EXPERIENCE\n- Did A'), '## WORK EXPERIENCE\n- Did A');
+  assert.equal(plainLanguage('## PROFESSIONAL SUMMARY\nText'), '## PROFESSIONAL SUMMARY\nText');
+});

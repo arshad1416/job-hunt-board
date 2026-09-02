@@ -116,6 +116,7 @@ export {
  */
 export function plainLanguage(text) {
   return String(text || '')
+    .replace(/^##\s+PROFESSIONAL EXPERIENCE\s*$/gm, '## WORK EXPERIENCE')
     .replace(/[ \t]*—[ \t]*/g, ', ')
     .replace(/(\w)—(\w)/g, '$1, $2')
     .replace(/,\s*,/g, ',');
