@@ -644,3 +644,12 @@ select { cursor: pointer; }
 .knockout-badge { color:var(--score-low); border:1px solid var(--score-low); }
 
 .material-state,.pdf-state{font-size:.75rem;color:var(--text-secondary);white-space:nowrap}
+
+/* ── Tracker jump link + back-to-top ── */
+html { scroll-behavior: smooth; }
+.stat-jump { display: flex; align-items: center; justify-content: center; }
+.jump-link { font-size: 0.8rem; font-weight: 600; color: var(--accent, #3b82f6); text-decoration: none; padding: 0.35rem 0.7rem; border: 1px solid var(--border, #30363d); border-radius: 6px; white-space: nowrap; }
+.jump-link:hover { background: rgba(59, 130, 246, 0.12); }
+.back-to-top { position: fixed; right: 1.1rem; bottom: 1.1rem; z-index: 60; width: 2.4rem; height: 2.4rem; border-radius: 50%; border: 1px solid var(--border, #30363d); background: var(--bg-card, #161b22); color: var(--text-primary, #e6edf3); font-size: 1rem; cursor: pointer; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4); }
+.back-to-top:hover { background: rgba(59, 130, 246, 0.18); }
+@media (max-width: 767px) { .stat-jump { display: none; } }

@@ -1014,6 +1014,16 @@
   window.generateMaterials = generateMaterials;
   window.setJobStatus = setJobStatus;
   window.viewMaterials = viewMaterials;
+
+  // Floating back-to-top arrow: appears once the page is scrolled, returns
+  // to the stats bar from anywhere (including the tracker at the bottom).
+  const backToTop = $('back-to-top');
+  if (backToTop) {
+    const toggleBackToTop = () => { backToTop.hidden = window.scrollY < 400; };
+    window.addEventListener('scroll', toggleBackToTop, { passive: true });
+    toggleBackToTop();
+    backToTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+  }
   window.draftFollowup = draftFollowup;
 
   // ═══════════════════════════════════════════════════════════════
