@@ -298,8 +298,29 @@
     showModal('generate-modal');
   }
 
+  let materialsJobId = null;
+  async function refreshMaterialLinks() {
+    if (!materialsJobId) return;
+    const btn = $('btn-refresh-materials');
+    if (btn) { btn.disabled = true; btn.textContent = 'Checking…'; }
+    try {
+      const res = await fetch('/api/material-links', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ job_id: materialsJobId }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+      $('link-resume').href = data.materials.resume;
+      $('link-cover').href = data.materials.cover_letter;
+      setPdfLinks(data.materials);
+    } catch (err) {
+      showToast('Could not refresh material links: ' + err.message, 'error');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '↻ Check PDFs again'; }
+    }
+  }
+
   function setPdfLinks(materials = {}) {
     const ready = materials.pdf_ready === true && materials.pdf_state === 'available' && Boolean(materials.resume_pdf && materials.cover_letter_pdf);
+    const refreshBtn = $('btn-refresh-materials');
+    if (refreshBtn) refreshBtn.hidden = ready;
     const status = $('pdf-status');
     if (status) status.textContent = ready ? 'PDFs available' : materials.pdf_state === 'failed' ? 'PDF render failed; retry generation.' : 'PDFs pending; refresh later.';
     for (const [id, url] of [['link-resume-pdf', ready ? materials.resume_pdf : null], ['link-cover-pdf', ready ? materials.cover_letter_pdf : null]]) {
@@ -309,6 +330,7 @@
   }
 
   function showGenerateResult(materials, quality, jobId) {
+    materialsJobId = String(jobId);
     document.querySelector('.modal-spinner-wrap').style.display = 'none';
     $('modal-status').style.display = 'none';
     $('modal-title').textContent = 'Materials Ready!';
@@ -781,6 +803,7 @@
     setPdfLinks({ pdf_state: 'pending', pdf_ready: false });
     lastGeneratedJobId = String(jobId);
 
+    materialsJobId = String(jobId);
     try {
       const res = await fetch('/api/material-links', {
         method: 'POST',
@@ -1014,6 +1037,9 @@
   window.generateMaterials = generateMaterials;
   window.setJobStatus = setJobStatus;
   window.viewMaterials = viewMaterials;
+
+  const refreshMaterialsBtn = $('btn-refresh-materials');
+  if (refreshMaterialsBtn) refreshMaterialsBtn.addEventListener('click', refreshMaterialLinks);
 
   // Floating back-to-top arrow: appears once the page is scrolled, returns
   // to the stats bar from anywhere (including the tracker at the bottom).
