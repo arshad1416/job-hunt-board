@@ -10,7 +10,7 @@ const resume = 'Ada Lovelace\nada@example.com | 555-555-5555\n\n## Summary\nSoft
 const cover = "Dear Hiring Team,\n\nI am excited to apply my JavaScript and TypeScript experience building applications and APIs. Your role's focus on React, Node.js, SQL, testing, and accessibility matches my background.\n\nSincerely,\nAda Lovelace\n";
 const store = new Map();
 const bucket = { store, put: async (k, b) => store.set(k, typeof b === 'string' ? b : String(b)), head: async k => store.has(k) ? {} : null, get: async k => store.has(k) ? { text: async () => store.get(k) } : null };
-const env = { TURSO_URL: 'https://turso.test', TURSO_TOKEN: 'token', NINEROUTER_API_KEY: 'llm', MATERIALS_SIGNING_KEY: 'signing', DASHBOARD_AUTH_TOKEN: 'fallback', JOB_MATERIALS_BUCKET: bucket };
+const env = { TURSO_URL: 'https://turso.test', TURSO_TOKEN: 'token', NINEROUTER_API_KEY: 'llm', MATERIALS_SIGNING_KEY: 'signing', DASHBOARD_AUTH_TOKEN: 'fallback', JOB_MATERIALS_BUCKET: bucket, GENERATION_WORKER: '1' };
 const revision = await profileRevision(profile);
 const profileKey = 'assets/profile/revisions/' + revision + '/profile.json';
 store.set('assets/profile/current.json', JSON.stringify({ schema: 'profile-v2', revision, content_sha256: revision, bytes: new TextEncoder().encode(profile).length, source_type: 'text', object_hashes: { profile: revision, 'assets/master_resume_ev.md': await sha256Hex(reference) }, profile_key: profileKey, reference_keys: ['assets/master_resume_ev.md'], reference_key: 'assets/master_resume_ev.md' }));
@@ -36,9 +36,35 @@ globalThis.fetch = async (url, options = {}) => {
     : (/cover letter/i.test(prompt) ? cover : resume);
   return Response.json({ choices: [{ message: { content } }] });
 };
+const moduleFetch = globalThis.fetch;
+const restoreFetch = async () => { globalThis.fetch = moduleFetch; };
 after(() => { globalThis.fetch = originalFetch; });
 
-test('generate handler stages and succeeds end-to-end', async () => {
+test('edge (non-worker) enqueues and answers 202 without LLM calls', async () => {
+  globalThis.fetch = async (url, options = {}) => {
+    if (String(url).startsWith(env.TURSO_URL)) {
+      const body = JSON.parse(options.body); const sql = body.requests[0].stmt.sql; calls.push(sql);
+      const args = body.requests[0].stmt.args || [];
+      if (/^UPDATE material_versions SET state='succeeded'/i.test(sql)) { state.artifactPrefix = args[0]?.value; state.currentVersion = args[2]?.value; }
+      if (/INSERT INTO material_current/i.test(sql)) { state.currentVersion = args[1]?.value; state.currentInserted = true; }
+      let rows = []; let cols = [];
+      if (/SELECT mv\* FROM material_current/i.test(sql)) { cols = ['id']; rows = []; } else if (/SELECT \* FROM applications/i.test(sql)) { cols = ['id','title','company','description','track','location','salary','url','hiring_manager']; rows = [[{type:'integer',value:'123'},{type:'text',value:'Software Engineer'},{type:'text',value:'Acme'},{type:'text',value:'Build JavaScript and TypeScript applications and APIs with React, Node.js, SQL, testing, and accessibility.'},{type:'text',value:'engineering'},{type:'text',value:'Remote'},{type:'text',value:'100000'},{type:'null'},{type:'text',value:'Sarah Chen'}]]; } else if (!/material_current/i.test(sql) && /SELECT .*material_versions/i.test(sql)) { cols = ['id']; rows = [[{type:'integer',value:'1'}]]; }
+      const write = /INSERT INTO material_versions|UPDATE material_versions|INSERT INTO render_jobs|INSERT INTO material_current|UPDATE material_current/i.test(sql);
+      return Response.json({ results: [{ type: 'ok', response: { result: { cols: write ? [] : cols.map(name => ({name})), rows, affected_row_count: write ? 1 : 0 } } }] });
+    }
+    throw new Error('LLM must not be called on the edge path');
+  };
+  try {
+    const res = await onRequestPost({ env: { ...env, GENERATION_WORKER: undefined }, request: new Request('https://x/api/generate', { method: 'POST', body: JSON.stringify({ job_id: '123' }) }) });
+    assert.equal(res.status, 202);
+    const body = await res.json();
+    assert.equal(body.generating, true);
+    assert.match(body.version, /^[a-f0-9]{64}$/);
+    assert.ok(calls.some(sql => /INSERT INTO material_versions/i.test(sql)));
+  } finally { await restoreFetch(); }
+});
+
+test('worker mode stages and succeeds end-to-end', async () => {
   const res = await onRequestPost({ env, request: new Request('https://x/api/generate', { method: 'POST', body: JSON.stringify({ job_id: '123' }) }) });
   assert.equal(res.status, 200);
   const body = await res.json();

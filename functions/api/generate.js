@@ -744,7 +744,7 @@ async function tryReuseMaterials(env, job, jobId) {
   }
 }
 
-async function runGenerate(context) {
+export async function runGenerate(context) {
   const { request, env } = context;
 
   // ── 1. Parse body ──
@@ -897,7 +897,21 @@ async function runGenerate(context) {
       templateRevision: 'source-v2',
       rendererRevision: 'source-v1'
     });
-    const claim = await claimMaterial(env, { jobId, version: materialVersion });
+    // Async generation: the edge 524-cuts requests beyond ~100s while the
+    // LLM pipeline needs up to ~3 minutes. On the edge we only stage the
+    // version row and answer 202; the Pi worker (GENERATION_WORKER=1)
+    // claims and executes it with no timeout.
+    if (!env.GENERATION_WORKER) {
+      stepLog('enqueued', { version_prefix: materialVersion.slice(0, 12) });
+      return json({
+        generating: true,
+        job_id: jobId,
+        version: materialVersion,
+        poll_ms: 10000,
+        note: 'Generation runs off-edge; poll GET /api/generate-status?job_id=' + jobId
+      }, 202);
+    }
+    const claim = await claimMaterial(env, { jobId, version: materialVersion, leaseSeconds: Number(env.GENERATION_LEASE_SECONDS) || undefined });
     if (!claim.claimed) {
       return json({ error: 'Material generation is already in progress' }, 409);
     }
