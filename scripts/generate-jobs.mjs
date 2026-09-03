@@ -19,11 +19,12 @@ export async function pollClaimableJobs({ env, limit = 3, query = tursoQuery, ex
   // gone and it is past the backoff window (markMaterialFailed does not set
   // retry_at, so the render-jobs retry_at predicate cannot be reused here).
   const rows = await query(env,
-    "SELECT mv.job_id, MAX(mv.id) AS latest FROM material_versions mv " +
-    "WHERE (mv.state='pending' OR (mv.state='claimed' AND datetime(mv.lease_expires_at)<=datetime('now')) OR (mv.state='failed' AND mv.lease_token IS NULL AND mv.attempt_count<? AND (mv.completed_at IS NULL OR mv.completed_at<=datetime('now','-60 seconds')))) " +
+    "SELECT mv.job_id, mv.id AS latest FROM material_versions mv " +
+    "WHERE mv.id=(SELECT MAX(m2.id) FROM material_versions m2 WHERE m2.job_id=mv.job_id) " +
+    "AND (mv.state='pending' OR (mv.state='claimed' AND datetime(mv.lease_expires_at)<=datetime('now')) OR (mv.state='failed' AND mv.lease_token IS NULL AND mv.attempt_count<? AND (mv.completed_at IS NULL OR mv.completed_at<=datetime('now','-60 seconds')))) " +
     "AND mv.attempt_count<? " +
     "AND NOT EXISTS (SELECT 1 FROM material_current mc WHERE mc.job_id=mv.job_id) " +
-    "GROUP BY mv.job_id ORDER BY mv.latest LIMIT ?", [MAX_ATTEMPTS, MAX_ATTEMPTS, Math.min(10, Math.max(1, limit))]);
+    "ORDER BY mv.id LIMIT ?", [MAX_ATTEMPTS, MAX_ATTEMPTS, Math.min(10, Math.max(1, limit))]);
   return rows.map(r => ({ jobId: r.job_id, latest: r.latest }));
 }
 
