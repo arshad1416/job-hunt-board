@@ -43,3 +43,6 @@ import { loadTemplates, renderMaterials } from '../scripts/materials-renderer.mj
 // the non-rendered document empty and renderMaterials rejected it, so no worker
 // render could ever succeed.
 test('renderPayload passes renderMaterials validation for either type',()=>{const details={name:'Ada',email:'a@x.test',phone:'555',location:'Toronto'};const md='## Summary\n\nBuilt things.\n\n- Did A\n- Did B\n';const t=loadTemplates();const out=renderMaterials(renderPayload(details,md),t);assert.ok(out.resume.length>0&&out.cover.length>0);assert.equal(out.revision.length,64);});
+import { pollClaimableJobs, supersedeOlderRows } from '../scripts/generate-jobs.mjs';
+test('generation worker retries failed rows without retry_at and picks latest per job',async()=>{let sql;const rows=await pollClaimableJobs({env:{},limit:5,query:async(e,s)=>{sql=s;return [{job_id:3468,latest:21}]}});assert.match(sql,/state='failed' AND mv\.lease_token IS NULL/);assert.match(sql,/GROUP BY mv\.job_id/);assert.deepEqual(rows,[{jobId:3468,latest:21}]);});
+test('supersedeOlderRows only demotes older non-terminal rows',async()=>{let sql,args;const write=async(e,s,a)=>{sql=s;args=a};await supersedeOlderRows({},3468,21,write);assert.match(sql,/id<\?/);assert.match(sql,/state IN \('pending','claimed'\)/);assert.deepEqual(args,[3468,21]);});

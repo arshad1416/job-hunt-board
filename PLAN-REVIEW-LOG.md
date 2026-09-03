@@ -54,3 +54,12 @@ Fresh read-only Codex session (gpt-5.6-luna, thread 01a06378-78a8-79e1-ba6e-ed25
 - Accepted (P2): `reviewer_used` now means the review ran (adopted or rank-rejected); UI distinguishes "LLM-reviewed" / "ran, kept original" / "skipped (reason)" and omits the clause entirely on cached responses.
 - Deferred (P1): wiring the PDF renderer revision into material_versions invalidation so existing current materials re-render automatically. The renderer revision is bumped (v3→v4) and new generations pick it up, but a version-invalidation pass for existing pointers is a design change tracked as follow-up; the canary material is regenerated manually in this session.
 Full suite 140/140 after fixes.
+
+## Async generation — Codex inspection (2026-09-03, round 1 of 2)
+
+Fresh read-only Codex session reviewed the async-generation diff before merge.
+- Accepted (P1): failed rows are now retryable (markMaterialFailed sets no retry_at, so the worker predicate follows resetFailedMaterial semantics instead of render-jobs' retry_at rule); only the latest version row per job runs, older non-terminal rows are demoted to superseded (protects the one-active index when profile/JD drifts between enqueue and execution); 'succeeded' status now requires the published pointer, with a distinct 'publishing' state.
+- Accepted (P2): per-job try/catch isolation and honest exit codes (dead 409 clause removed); worker claims use a 600s lease (GENERATION_LEASE_SECONDS) since three sequential LLM calls at 120s each exceed the 300s default; status returns attempt_count and the same reviewer_used semantics as the generation response.
+- Rejected (P2, logged): moving the LLM key off Pages and replacing the worker's signing token — Pages keeps its configured key (the edge path still validates it), and the single-user token model is unchanged.
+- Deferred (logged): heartbeats for in-flight generation leases (600s lease plus token fencing bounds the damage to duplicate LLM cost); atomic succeeded+pointer publication (pre-existing; status now distinguishes 'publishing' instead of lying).
+Full suite 155/155.

@@ -634,6 +634,32 @@
   // ═══════════════════════════════════════════════════════════════
 
   /**
+   * Poll /api/generate-status until the generation reaches a terminal
+   * state. Resolves with the status payload (quality included) on success,
+   * throws on failure, null after the timeout. ~15 minutes budget.
+   */
+  async function pollGeneration(jobId) {
+    const deadline = Date.now() + 15 * 60 * 1000;
+    while (Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, 10000));
+      try {
+        const res = await fetch('/api/generate-status?job_id=' + encodeURIComponent(jobId), { headers: authHeaders() });
+        if (!res.ok) continue;
+        const st = await res.json();
+        const statusEl = $('modal-status');
+        if (statusEl) statusEl.textContent = st.generation_state === 'pending' || st.generation_state === 'claimed'
+          ? 'Generating on the Pi (attempt ' + ((st.attempt_count) || 1) + ')… this takes up to ~3 minutes.'
+          : 'Generation ' + st.generation_state + '…';
+        if (st.generation_state === 'succeeded') return st;
+        if (st.generation_state === 'failed') throw new Error('Generation failed (' + (st.error_code || 'unknown') + '). You can retry from the Generate button.');
+      } catch (err) {
+        if (/Generation failed/.test(err.message)) throw err;
+      }
+    }
+    return null;
+  }
+
+  /**
    * POST /api/generate — generate resume + cover letter via Claude Opus 5.
    */
   async function generateMaterials(jobId, btn) {
@@ -674,6 +700,30 @@
 
       if (!res.ok) {
         throw new Error(data.error || 'Generation failed (HTTP ' + res.status + ')');
+      }
+
+      // Async generation: the edge enqueues and the Pi worker executes
+      // (LLM + reviewer take up to ~3 minutes). Poll until done.
+      if (res.status === 202 && data.generating) {
+        $('modal-status').style.display = 'block';
+        $('modal-status').textContent = 'Queued. The Pi worker picks this up within ~2 minutes…';
+        document.querySelector('.modal-spinner-wrap').style.display = 'flex';
+        $('modal-result').style.display = 'none';
+        const done = await pollGeneration(jobId);
+        if (!done) throw new Error('Generation did not complete in time. Check the View popup later; the worker keeps retrying.');
+        const links = await fetch('/api/material-links', {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify({ job_id: jobId })
+        });
+        const linkData = await links.json();
+        if (!links.ok) throw new Error(linkData.error || 'Could not sign material links (HTTP ' + links.status + ')');
+        showGenerateResult(linkData.materials, done.quality || null, jobId);
+        job.status = 'materials_ready';
+        job.has_materials = true;
+        renderTable();
+        showToast('Materials generated for ' + job.company, 'success');
+        return;
       }
 
       showGenerateResult(data.materials, data.quality, jobId);
