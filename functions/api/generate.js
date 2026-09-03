@@ -853,7 +853,9 @@ export async function runGenerate(context) {
   // runs after it. A hit short-circuits generation entirely. A miss never
   // mutates the application status.
   stepLog('jd_source', { source: jdSource });
-  const reused = await tryReuseMaterials(env, job, jobId);
+  // Reuse stages objects and claims inline; on the edge a client disconnect
+  // can kill it mid-flight. The worker runs the whole flow including reuse.
+  const reused = env.GENERATION_WORKER ? await tryReuseMaterials(env, job, jobId) : null;
   // Named greeting: the manually edited hiring_manager column wins; the
   // posting text is the fallback. Recorded for traceability.
   const manualHiringManager = String(job.hiring_manager || '').trim().slice(0, 80);
