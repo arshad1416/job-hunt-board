@@ -84,7 +84,7 @@ const LLM_TIMEOUT_MS = 120000;
 /** One reviewer pass is enough; deterministic gates decide whether to keep it.
  * Both rewritten documents are returned, so the cap must fit them in full —
  * 3500 truncated the response mid-document and made every pass unparseable. */
-const REVIEW_MAX_TOKENS = 9000;
+const REVIEW_MAX_TOKENS = 6000;
 
 /** Reviewer rewrites JSON; a low temperature keeps it conservative. */
 const REVIEW_TEMPERATURE = 0.2;
