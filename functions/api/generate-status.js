@@ -5,7 +5,7 @@ import { getMaterialPdfState, getCurrentMaterial } from '../_lib/material-store.
 // Reports the latest material_version lifecycle state, the current pointer,
 // render availability, and (when staged) the quality block from
 // job_details.json so the modal can show the same summary as before.
-const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Vary: Origin' } });
+const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Vary': 'Origin' } });
 
 export async function onRequestGet({ request, env }) {
   const q = new URL(request.url).searchParams;
